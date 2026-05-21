@@ -62,16 +62,20 @@ function generateDays(start, end, existingDays=[]) {
 // Design Tokens
 // ─────────────────────────────────────────────────────────────
 const PALETTE = [
-  {id:0,bg:"#7A8286",fg:"#FFF",accent:"#C8BEB4",label:"藍灰"},
-  {id:1,bg:"#74747E",fg:"#FFF",accent:"#B8BEB8",label:"紫灰"},
-  {id:2,bg:"#A8B0A8",fg:"#FFF",accent:"#C8BEB4",label:"霧灰綠"},
-  {id:3,bg:"#C0B4A8",fg:"#FFF",accent:"#7A5454",label:"奶灰棕"},
-  {id:4,bg:"#7A4E4E",fg:"#FFF",accent:"#C0B4A8",label:"玫瑰赭"},
-  {id:5,bg:"#A07E7C",fg:"#FFF",accent:"#DDD0CE",label:"莫蘭迪玫"},
-  {id:6,bg:"#9A9A9A",fg:"#FFF",accent:"#C8BEB4",label:"銀灰"},
-  {id:7,bg:"#5E6870",fg:"#FFF",accent:"#A8B0A8",label:"石板藍"},
-  {id:8,bg:"#889688",fg:"#FFF",accent:"#C8BEB0",label:"薄荷灰"},
-  {id:9,bg:"#BCB49E",fg:"#FFF",accent:"#A07E7C",label:"米白"},
+  {id:0, bg:"#7A8286",fg:"#FFF",accent:"#C8BEB4",label:"藍灰"},
+  {id:1, bg:"#74747E",fg:"#FFF",accent:"#B8BEB8",label:"紫灰"},
+  {id:2, bg:"#A8B0A8",fg:"#FFF",accent:"#C8BEB4",label:"霧灰綠"},
+  {id:3, bg:"#C0B4A8",fg:"#FFF",accent:"#7A5454",label:"奶灰棕"},
+  {id:4, bg:"#7A4E4E",fg:"#FFF",accent:"#C0B4A8",label:"玫瑰赭"},
+  {id:5, bg:"#A07E7C",fg:"#FFF",accent:"#DDD0CE",label:"莫蘭迪玫"},
+  {id:6, bg:"#9A9A9A",fg:"#FFF",accent:"#C8BEB4",label:"銀灰"},
+  {id:7, bg:"#5E6870",fg:"#FFF",accent:"#A8B0A8",label:"石板藍"},
+  {id:8, bg:"#889688",fg:"#FFF",accent:"#C8BEB0",label:"薄荷灰"},
+  {id:9, bg:"#BCB49E",fg:"#FFF",accent:"#A07E7C",label:"米白"},
+  {id:10,bg:"#7A9EB8",fg:"#FFF",accent:"#C8DCE8",label:"霧藍"},
+  {id:11,bg:"#90B4C8",fg:"#FFF",accent:"#CCE0EC",label:"天空藍"},
+  {id:12,bg:"#D4B84E",fg:"#FFF",accent:"#F0E4B0",label:"蛋黃"},
+  {id:13,bg:"#D4AA6A",fg:"#FFF",accent:"#EEE0BC",label:"蜂蜜橘"},
 ];
 const APP_BG="#EEECEA", CARD_BG="#F8F7F5", BORDER="#D8D2CC";
 const TEXT_D="#2E2824", TEXT_M="#6A6058", TEXT_L="#A09890";
@@ -1265,6 +1269,36 @@ function WeatherCard({trip, pal}){
   );
 }
 
+// ─── 打包清單項目（勾選 + 點文字編輯）───
+function ChecklistItem({item, done, onToggle, onRename, pal}){
+  const [editing, setEditing] = useState(false);
+  const [val, setVal] = useState(item);
+  const inputRef = useRef(null);
+
+  useEffect(()=>{ if(editing) inputRef.current?.focus(); },[editing]);
+
+  const finish = () => {
+    setEditing(false);
+    onRename(val);
+  };
+
+  return(
+    <div style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",borderBottom:`1px solid ${BORDER}`}}>
+      <div onClick={onToggle}
+        style={{width:20,height:20,borderRadius:6,border:`1.5px solid ${done?pal.bg:BORDER}`,background:done?pal.bg:"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>
+        {done&&<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="#fff" strokeWidth="2"><path d="M2 6l3 3 5-5"/></svg>}
+      </div>
+      {editing
+        ? <input ref={inputRef} value={val} onChange={e=>setVal(e.target.value)}
+            onBlur={finish} onKeyDown={e=>e.key==="Enter"&&finish()}
+            style={{flex:1,fontSize:16,color:TEXT_D,background:"transparent",border:"none",borderBottom:`1px solid ${pal.bg}`,outline:"none",fontFamily:"inherit",padding:"1px 0"}}/>
+        : <span onClick={e=>{e.stopPropagation();if(!done){setVal(item);setEditing(true);}}}
+            style={{flex:1,fontSize:12,color:done?TEXT_L:TEXT_D,textDecoration:done?"line-through":"none",cursor:done?"default":"text"}}>{item}</span>
+      }
+    </div>
+  );
+}
+
 function TripListTab({trip, onUpdate, pal}){
   const [openCat,      setOpenCat]      = useState("docs");
   const [openChecklist,setOpenChecklist]= useState(true);
@@ -1277,22 +1311,27 @@ function TripListTab({trip, onUpdate, pal}){
   const [customItems,  setCustomItems]  = useState({});
   const [newItemText,  setNewItemText]  = useState({});
   const [emergInfo,    setEmergInfo]    = useState({});
+  const [deletedEmerg, setDeletedEmerg] = useState(new Set()); // 已刪除的預設欄位 key
   const [customPhrases,setCustomPhrases]= useState([]);
   const [newPhrase,    setNewPhrase]    = useState("");
 
   const [deletedItems,setDeletedItems]=useState({}); // catId → Set of deleted default items
-  const [confirmDel,  setConfirmDel]  = useState(null); // {catId, item}
+  const [confirmDel,  setConfirmDel]  = useState(null); // {catId, item} or {item, action}
 
   const deleteItem=(catId,item,isCustom)=>{
     setConfirmDel({catId,item,isCustom});
   };
   const confirmDelete=()=>{
     if(!confirmDel) return;
-    const {catId,item,isCustom}=confirmDel;
-    if(isCustom){
-      setCustomItems(p=>({...p,[catId]:(p[catId]||[]).filter(x=>x!==item)}));
+    if(confirmDel.action){
+      confirmDel.action();
     } else {
-      setDeletedItems(p=>({...p,[catId]:new Set([...(p[catId]||[]),item])}));
+      const {catId,item,isCustom}=confirmDel;
+      if(isCustom){
+        setCustomItems(p=>({...p,[catId]:(p[catId]||[]).filter(x=>x!==item)}));
+      } else {
+        setDeletedItems(p=>({...p,[catId]:new Set([...(p[catId]||[]),item])}));
+      }
     }
     setConfirmDel(null);
   };
@@ -1525,12 +1564,21 @@ function TripListTab({trip, onUpdate, pal}){
                 const done=checked[openCat]?.[item];
                 return(
                   <SwipeDelete key={item} onDelete={()=>deleteItem(openCat,item,isCustom)}>
-                    <div style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",borderBottom:`1px solid ${BORDER}`}}>
-                      <div onClick={e=>{e.stopPropagation();toggleCheck(openCat,item);}} style={{width:20,height:20,borderRadius:6,border:`1.5px solid ${done?pal.bg:BORDER}`,background:done?pal.bg:"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>
-                        {done&&<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="#fff" strokeWidth="2"><path d="M2 6l3 3 5-5"/></svg>}
-                      </div>
-                      <span onClick={e=>{e.stopPropagation();toggleCheck(openCat,item);}} style={{flex:1,fontSize:12,color:done?TEXT_L:TEXT_D,textDecoration:done?"line-through":"none",cursor:"pointer"}}>{item}</span>
-                    </div>
+                    <ChecklistItem
+                      item={item} done={done}
+                      onToggle={e=>{e.stopPropagation();toggleCheck(openCat,item);}}
+                      onRename={newName=>{
+                        if(!newName.trim()||newName===item) return;
+                        if(isCustom){
+                          setCustomItems(p=>({...p,[openCat]:(p[openCat]||[]).map(x=>x===item?newName.trim():x)}));
+                        } else {
+                          // 預設項目：加入自訂並標記原項目為已刪除
+                          setDeletedItems(p=>({...p,[openCat]:new Set([...(p[openCat]||[]),item])}));
+                          setCustomItems(p=>({...p,[openCat]:[...(p[openCat]||[]),newName.trim()]}));
+                        }
+                      }}
+                      pal={pal}
+                    />
                   </SwipeDelete>
                 );
               });
@@ -1563,8 +1611,8 @@ function TripListTab({trip, onUpdate, pal}){
         )}
         {openEmerg&&<div style={{borderTop:`1px solid ${BORDER}`,padding:"10px 14px",display:"flex",flexDirection:"column",gap:8}}>
           {/* 預設固定欄位 */}
-          {EMERG.map(ef=>(
-            <SwipeDelete key={ef.key} onDelete={()=>setEmergInfo(p=>({...p,[ef.key]:{...p[ef.key]||{},value:""}}))} confirmMsg={`清除「${ef.label}」的內容？`}>
+          {EMERG.filter(ef=>!deletedEmerg.has(ef.key)).map(ef=>(
+            <SwipeDelete key={ef.key} onDelete={()=>setConfirmDel({item:ef.label, action:()=>setDeletedEmerg(p=>new Set([...p,ef.key]))})}>
               <div style={{background:APP_BG,borderRadius:12,padding:"9px 12px"}}>
                 <div style={{fontSize:10,color:TEXT_L,marginBottom:4,letterSpacing:"0.05em",textTransform:"uppercase"}}>{ef.label}</div>
                 <input value={(emergInfo[ef.key]?.value!==undefined?emergInfo[ef.key].value:emergInfo[ef.key])||""}
@@ -1576,7 +1624,7 @@ function TripListTab({trip, onUpdate, pal}){
           ))}
           {/* 自訂項目（標題+內容都可改）*/}
           {Object.entries(emergInfo).filter(([k])=>k.startsWith("custom_")).map(([k,v])=>(
-            <SwipeDelete key={k} onDelete={()=>setEmergInfo(p=>{const n={...p};delete n[k];return n;})} confirmMsg="刪除這個備忘項目？">
+            <SwipeDelete key={k} onDelete={()=>setConfirmDel({item:typeof v==="object"?v.label||"備忘項目":"備忘項目", action:()=>setEmergInfo(p=>{const n={...p};delete n[k];return n;})})}>
               <div style={{background:APP_BG,borderRadius:12,padding:"9px 12px"}}>
                 <input value={typeof v==="object"?v.label||"":""} onChange={e=>setEmergInfo(p=>({...p,[k]:{...(typeof p[k]==="object"?p[k]:{}),label:e.target.value}}))}
                   placeholder="項目名稱（例如：旅遊保險單號）"
@@ -2807,7 +2855,7 @@ const TRANSIT_ART = {
   flight: c=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 00-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" fill={`${c}20`}/></svg>,
 };
 
-function TransitBar({from,to,pal}){
+function TransitBar({from,fromUrl,to,toUrl,pal}){
   const [info,setInfo]=useState(null);
   const [loading,setLoading]=useState(false);
 
@@ -2833,7 +2881,19 @@ function TransitBar({from,to,pal}){
 
   if(!from||!to||from==="未定地點"||to==="未定地點") return null;
 
-  const mapsUrl=`https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(from)}&destination=${encodeURIComponent(to)}&travelmode=transit`;
+  // 導航連結：優先用 locationUrl，否則用地點名稱串 Google Maps
+  const mapsUrl = (() => {
+    if(fromUrl&&toUrl){
+      // 兩個都有連結：用 Google Maps dir 串地點名稱（連結不適合串接）
+      return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(from)}&destination=${encodeURIComponent(to)}&travelmode=transit`;
+    }
+    if(toUrl&&toUrl.startsWith("http")){
+      // 目的地有連結：直接開啟目的地連結
+      return toUrl;
+    }
+    return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(from)}&destination=${encodeURIComponent(to)}&travelmode=transit`;
+  })();
+
   const mode=["walk","metro","bus","taxi","flight"].includes(info?.mode)?info.mode:"bus";
   const color=TRANSIT_COLORS[mode];
 
@@ -2906,22 +2966,24 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
   const NAV_H=70, DATE_H=106;
 
   const renderCalendar=()=>{
-    // 取得當日有地點的行程，產生地圖 URL
-    const validLocations = schedule
-      .map(ev=>ev.location)
-      .filter(loc=>loc&&loc!=="未定地點");
+    // 取得當日有地點的行程（location 或 locationUrl）
+    const validEvents = schedule.filter(ev=>ev.location&&ev.location!=="未定地點");
+    const validLocations = validEvents.map(ev=>ev.location);
 
-    const mapUrl = (() => {
-      if(validLocations.length===0) return null;
-      if(validLocations.length===1){
-        return `https://maps.google.com/maps?q=${encodeURIComponent(validLocations[0])}&output=embed&z=15`;
+    // 一鍵規劃：有 locationUrl 的用連結，否則用地點名稱
+    const buildRouteUrl = () => {
+      if(validEvents.length===0) return null;
+      // 若所有地點都有 Google Maps 連結，嘗試串接
+      const points = validEvents.map(ev=>ev.locationUrl||ev.location);
+      // 若有非 google maps 連結，只開第一個連結
+      const hasExternalUrl = validEvents.some(ev=>ev.locationUrl&&!ev.locationUrl.includes("google"));
+      if(hasExternalUrl){
+        const first = validEvents.find(ev=>ev.locationUrl);
+        return first?.locationUrl||`https://www.google.com/maps/dir/${points.map(encodeURIComponent).join("/")}`;
       }
-      // 多點：用 directions embed
-      const origin = encodeURIComponent(validLocations[0]);
-      const dest   = encodeURIComponent(validLocations[validLocations.length-1]);
-      const waypts = validLocations.slice(1,-1).map(l=>`waypoints=${encodeURIComponent(l)}`).join("&");
-      return `https://www.google.com/maps/embed/v1/directions?key=AIzaSyD-9tSrke72PouQMnMX-a7eZSW0jkFMBWY&origin=${origin}&destination=${dest}${waypts?`&${waypts}`:""}&mode=transit&language=zh-TW`;
-    })();
+      // 全用地點名稱串 Google Maps 多點導航
+      return `https://www.google.com/maps/dir/${validLocations.map(encodeURIComponent).join("/")}`;
+    };
 
     return (
     <>
@@ -2932,8 +2994,8 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
             {/* 按鈕列 */}
             <div style={{display:"flex",gap:8}}>
               <button onClick={()=>{
-                const url=`https://www.google.com/maps/dir/${validLocations.map(encodeURIComponent).join("/")}`;
-                window.open(url,"_blank");
+                const url = buildRouteUrl();
+                if(url) window.open(url,"_blank");
               }}
                 style={{flex:1,padding:"9px 0",borderRadius:12,background:pal.bg,color:pal.fg,fontSize:11,fontWeight:600,border:"none",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
                 <Icon name="map" size={13} color={pal.fg} sw={1.8}/> 一鍵規劃路線
@@ -3015,7 +3077,10 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
               </div>
               {/* 行程間 TransitBar */}
               {i<schedule.length-1&&(
-                <TransitBar from={ev.location} to={schedule[i+1].location} pal={pal}/>
+                <TransitBar
+                  from={ev.location} fromUrl={ev.locationUrl}
+                  to={schedule[i+1].location} toUrl={schedule[i+1].locationUrl}
+                  pal={pal}/>
               )}
             </div>
             );
@@ -3089,7 +3154,7 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
             </div>
             <div style={{flex:1,minWidth:0}}>
               <label style={lbl}>停留時長</label>
-              <input value={form.duration} onChange={e=>sf("duration")(e.target.value)} placeholder="1 小時" style={inp}/>
+              <input value={form.duration} onChange={e=>sf("duration")(e.target.value)} placeholder="1 小時" style={{...inp,height:36,padding:"0 14px",boxSizing:"border-box"}}/>
             </div>
           </div>
 
@@ -3161,7 +3226,7 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
       paddingBottom: NAV_H,
     }}>
       {/* 封面 Header — 緊湊版 */}
-      <div style={{background:pal.bg,padding:"48px 18px 14px",position:"relative",overflow:"hidden"}}>
+      <div style={{background:pal.bg,padding:"36px 18px 14px",position:"relative",overflow:"hidden"}}>
         {trip.coverImage&&<div style={{position:"absolute",inset:0}}><img src={trip.coverImage} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/><div style={{position:"absolute",inset:0,background:`linear-gradient(180deg,${pal.bg}CC 0%,${pal.bg}90 100%)`}}/></div>}
         {!trip.coverImage&&<><div style={{position:"absolute",right:-20,top:-20,width:120,height:120,borderRadius:"50%",background:"rgba(255,255,255,.07)"}}/><div style={{position:"absolute",right:18,bottom:-10,width:60,height:60,borderRadius:"50%",background:"rgba(255,255,255,.05)"}}/></>}
         <div style={{position:"relative",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -3170,8 +3235,8 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
               <Icon name="chevron-left" size={13} color={pal.fg}/> 返回
             </button>
             <div style={{minWidth:0}}>
-              <div style={{fontFamily:"Georgia,serif",fontSize:22,fontWeight:700,color:pal.fg,lineHeight:1.1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{trip.name}</div>
-              <div style={{fontSize:10,color:"rgba(255,255,255,.70)",marginTop:1}}>{trip.startDate} → {trip.endDate}</div>
+              <div style={{fontFamily:"Georgia,serif",fontSize:26,fontWeight:700,color:pal.fg,lineHeight:1.1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{trip.name}</div>
+              <div style={{fontSize:11,color:"rgba(255,255,255,.70)",marginTop:2}}>{trip.startDate} → {trip.endDate}</div>
             </div>
           </div>
         </div>
