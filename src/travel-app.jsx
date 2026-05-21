@@ -1036,19 +1036,21 @@ function BookmarkTab({ trip, onUpdate }){
           <Field label="景點名稱 *" value={fName} onChange={setFName} placeholder="例如：聖水洞咖啡街"/>
           {/* 分類 */}
           <div>
-            <label style={{fontSize:11,color:TEXT_L,display:"block",marginBottom:8,letterSpacing:"0.07em",textTransform:"uppercase"}}>分類</label>
-            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-              {SPOT_CATS.map(c=>{
-                const sel=fCat===c.id;
-                return(
-                  <button key={c.id} onClick={()=>setFCat(c.id)}
-                    style={{flex:1,padding:"10px 4px",borderRadius:14,background:sel?pal.bg:APP_BG,border:`1.5px solid ${sel?pal.bg:BORDER}`,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:5,transition:"all .15s"}}>
-                    <SpotCatIcon id={c.id} size={20} color={sel?pal.fg:TEXT_M}/>
-                    <span style={{fontSize:10,color:sel?pal.fg:TEXT_M,fontFamily:"inherit"}}>{c.label}</span>
-                  </button>
-                );
-              })}
-            </div>
+            <label style={{fontSize:11,color:TEXT_L,display:"block",marginBottom:6,letterSpacing:"0.07em",textTransform:"uppercase"}}>分類</label>
+            {[0,1].map(row=>(
+              <div key={row} style={{display:"flex",gap:5,marginBottom:row===0?5:0}}>
+                {SPOT_CATS.filter((_,i)=>row===0?i<4:i>=4).map(c=>{
+                  const sel=fCat===c.id;
+                  return(
+                    <button key={c.id} onClick={()=>setFCat(c.id)}
+                      style={{flex:1,padding:"7px 2px",borderRadius:12,background:sel?pal.bg:APP_BG,border:"1.5px solid "+(sel?pal.bg:BORDER),cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,transition:"all .15s"}}>
+                      <SpotCatIcon id={c.id} size={16} color={sel?pal.fg:TEXT_M}/>
+                      <span style={{fontSize:9,color:sel?pal.fg:TEXT_M,fontFamily:"inherit",whiteSpace:"nowrap"}}>{c.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
           </div>
           {/* 地址 — fontSize:16 防 iOS 縮放 */}
           <div>
