@@ -1272,28 +1272,48 @@ function WeatherCard({trip, pal}){
 // ─── 打包清單項目（勾選 + 點文字編輯）───
 function ChecklistItem({item, done, onToggle, onRename, pal}){
   const [editing, setEditing] = useState(false);
-  const [val, setVal] = useState(item);
-  const inputRef = useRef(null);
+  const [val, setVal]         = useState(item);
+  const inputRef              = useRef(null);
+  const committedRef          = useRef(false);
 
-  useEffect(()=>{ if(editing) inputRef.current?.focus(); },[editing]);
+  // 同步外部 item 變化（但編輯中不覆蓋）
+  useEffect(()=>{ if(!editing) setVal(item); },[item, editing]);
 
-  const finish = () => {
+  useEffect(()=>{
+    if(editing){
+      committedRef.current = false;
+      // 用 setTimeout 避免 focus 觸發 scroll
+      setTimeout(()=>inputRef.current?.focus({preventScroll:true}), 0);
+    }
+  },[editing]);
+
+  const commit = () => {
+    if(committedRef.current) return;
+    committedRef.current = true;
     setEditing(false);
-    onRename(val);
+    if(val.trim() && val.trim()!==item) onRename(val.trim());
+    else setVal(item);
   };
 
   return(
-    <div style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",borderBottom:`1px solid ${BORDER}`}}>
-      <div onClick={onToggle}
+    <div style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",borderBottom:`1px solid ${BORDER}`,minHeight:34}}>
+      <div onMouseDown={e=>{e.preventDefault();e.stopPropagation();onToggle(e);}}
+        onTouchEnd={e=>{e.stopPropagation();onToggle(e);}}
         style={{width:20,height:20,borderRadius:6,border:`1.5px solid ${done?pal.bg:BORDER}`,background:done?pal.bg:"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>
         {done&&<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="#fff" strokeWidth="2"><path d="M2 6l3 3 5-5"/></svg>}
       </div>
       {editing
-        ? <input ref={inputRef} value={val} onChange={e=>setVal(e.target.value)}
-            onBlur={finish} onKeyDown={e=>e.key==="Enter"&&finish()}
-            style={{flex:1,fontSize:16,color:TEXT_D,background:"transparent",border:"none",borderBottom:`1px solid ${pal.bg}`,outline:"none",fontFamily:"inherit",padding:"1px 0"}}/>
-        : <span onClick={e=>{e.stopPropagation();if(!done){setVal(item);setEditing(true);}}}
-            style={{flex:1,fontSize:12,color:done?TEXT_L:TEXT_D,textDecoration:done?"line-through":"none",cursor:done?"default":"text"}}>{item}</span>
+        ? <input ref={inputRef} value={val}
+            onChange={e=>setVal(e.target.value)}
+            onBlur={commit}
+            onKeyDown={e=>{ if(e.key==="Enter"){ e.preventDefault(); commit(); } }}
+            style={{flex:1,fontSize:16,lineHeight:"20px",height:20,color:TEXT_D,background:"transparent",border:"none",borderBottom:`1px solid ${pal.bg}`,outline:"none",fontFamily:"inherit",padding:0}}/>
+        : <span
+            onMouseDown={e=>{ if(done) return; e.preventDefault(); setVal(item); setEditing(true); }}
+            onTouchEnd={e=>{ if(done) return; e.stopPropagation(); setVal(item); setEditing(true); }}
+            style={{flex:1,fontSize:12,lineHeight:"20px",color:done?TEXT_L:TEXT_D,textDecoration:done?"line-through":"none",cursor:done?"default":"text",userSelect:"none"}}>
+            {item}
+          </span>
       }
     </div>
   );
@@ -1316,6 +1336,7 @@ function TripListTab({trip, onUpdate, pal}){
   const [newPhrase,    setNewPhrase]    = useState("");
 
   const [deletedItems,setDeletedItems]=useState({}); // catId → Set of deleted default items
+  const [renamedItems,setRenamedItems]=useState({}); // catId → { 原名: 新名 }
   const [confirmDel,  setConfirmDel]  = useState(null); // {catId, item} or {item, action}
 
   const deleteItem=(catId,item,isCustom)=>{
@@ -1542,7 +1563,8 @@ function TripListTab({trip, onUpdate, pal}){
           <div style={{display:"flex",borderBottom:`1px solid ${BORDER}`}}>
             {CHECKLIST_CATS.map(c=>{
               // 正確計算：扣掉已刪除的預設項目，加上自訂項目
-              const activeDefault=(c.items||[]).filter(it=>!(deletedItems[c.id]||new Set()).has(it));
+              const activeDefault=(c.items||[]).filter(it=>!(deletedItems[c.id]||new Set()).has(it))
+                .map(it=>(renamedItems[c.id]||{})[it]||it);
               const allItems=[...activeDefault,...(customItems[c.id]||[])];
               const done=allItems.filter(it=>checked[c.id]?.[it]).length;
               const sel=openCat===c.id;
@@ -1557,24 +1579,30 @@ function TripListTab({trip, onUpdate, pal}){
             {(()=>{
               const toggleCheck=(catId,item)=>setChecked(p=>({...p,[catId]:{...(p[catId]||{}),[item]:!(p[catId]?.[item])}}));
               const cat=CHECKLIST_CATS.find(c=>c.id===openCat);
-              const activeDefault=(cat?.items||[]).filter(it=>!(deletedItems[openCat]||new Set()).has(it));
+              const activeDefault=(cat?.items||[])
+                .filter(it=>!(deletedItems[openCat]||new Set()).has(it))
+                .map(it=>(renamedItems[openCat]||{})[it]||it); // 套用改名
               const allItems=[...activeDefault,...(customItems[openCat]||[])];
               return allItems.map((item,idx)=>{
                 const isCustom=idx>=activeDefault.length;
-                const done=checked[openCat]?.[item];
+                // 原始預設名稱（反查 rename map）
+                const originalName = isCustom ? item :
+                  Object.entries(renamedItems[openCat]||{}).find(([,v])=>v===item)?.[0] || item;
+                const done=checked[openCat]?.[originalName]||checked[openCat]?.[item];
                 return(
-                  <SwipeDelete key={item} onDelete={()=>deleteItem(openCat,item,isCustom)}>
+                  <SwipeDelete key={originalName} onDelete={()=>deleteItem(openCat,originalName,isCustom)}>
                     <ChecklistItem
                       item={item} done={done}
-                      onToggle={e=>{e.stopPropagation();toggleCheck(openCat,item);}}
+                      onToggle={e=>{e.stopPropagation();
+                        setChecked(p=>({...p,[openCat]:{...(p[openCat]||{}),[originalName]:!(p[openCat]?.[originalName])}}));
+                      }}
                       onRename={newName=>{
                         if(!newName.trim()||newName===item) return;
                         if(isCustom){
                           setCustomItems(p=>({...p,[openCat]:(p[openCat]||[]).map(x=>x===item?newName.trim():x)}));
                         } else {
-                          // 預設項目：加入自訂並標記原項目為已刪除
-                          setDeletedItems(p=>({...p,[openCat]:new Set([...(p[openCat]||[]),item])}));
-                          setCustomItems(p=>({...p,[openCat]:[...(p[openCat]||[]),newName.trim()]}));
+                          // 預設項目：用 renamedItems 原地改名，不動順序
+                          setRenamedItems(p=>({...p,[openCat]:{...(p[openCat]||{}),[originalName]:newName.trim()}}));
                         }
                       }}
                       pal={pal}
