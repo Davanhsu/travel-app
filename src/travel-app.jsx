@@ -767,9 +767,24 @@ const SPOT_CATS = [
   { id:"cafe",       label:"咖啡廳" },
   { id:"shop",       label:"購物"   },
   { id:"scenery",    label:"景點"   },
+  { id:"convenience",label:"超商"    },
+  { id:"souvenir",   label:"伴手禮" },
+  { id:"beauty",     label:"美容"   },
+  { id:"drugstore",  label:"藥妝"   },
 ];
-const SPOT_ICON_MAP = { restaurant:"food", cafe:"snack", shop:"shop", scenery:"scenery" };
+
+const SPOT_ICON_MAP = {
+  restaurant:"food", cafe:"snack", shop:"shop", scenery:"scenery",
+  convenience:"convenience", souvenir:"souvenir", beauty:"beauty", drugstore:"drugstore"
+};
+
 function SpotCatIcon({ id, size=22, color="currentColor" }){
+  const s={width:size,height:size};
+  const sw=1.6, sc="round";
+  if(id==="convenience") return <svg style={s} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={sw} strokeLinecap={sc} strokeLinejoin={sc}><rect x="3" y="7" width="18" height="14" rx="2"/><path d="M16 7V5a2 2 0 00-4 0v2M3 11h18"/><path d="M8 15h2M14 15h2"/></svg>;
+  if(id==="souvenir")    return <svg style={s} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={sw} strokeLinecap={sc} strokeLinejoin={sc}><path d="M20 12V22H4V12"/><path d="M22 7H2v5h20V7z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 010-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 000-5C13 2 12 7 12 7z"/></svg>;
+  if(id==="beauty")      return <svg style={s} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={sw} strokeLinecap={sc} strokeLinejoin={sc}><path d="M9 2h6l1 5H8L9 2z"/><rect x="6" y="7" width="12" height="14" rx="2"/><path d="M10 11h4M10 14h4"/></svg>;
+  if(id==="drugstore")   return <svg style={s} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={sw} strokeLinecap={sc} strokeLinejoin={sc}><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M12 8v8M8 12h8"/></svg>;
   return <CatIcon id={SPOT_ICON_MAP[id]||"other"} size={size} color={color}/>;
 }
 
@@ -833,19 +848,25 @@ function BookmarkTab({ trip, onUpdate }){
 
   return(
     <div style={{padding:"16px 0 24px"}}>
-      {/* 分類 Tab */}
-      <div style={{display:"flex",gap:8,marginBottom:14,overflowX:"auto",scrollbarWidth:"none",paddingBottom:2,paddingLeft:16,paddingRight:16}}>
-        {[{id:"all",label:`全部 (${bookmarks.length})`},...SPOT_CATS.map(c=>({...c,label:`${c.label} (${catCount(c.id)})`}))].map(c=>{
-          const active=selCat===c.id;
-          return(
-            <button key={c.id} onClick={()=>setSelCat(c.id)}
-              style={{flexShrink:0,display:"flex",alignItems:"center",gap:5,padding:"7px 14px",borderRadius:20,border:`1.5px solid ${active?pal.bg:BORDER}`,background:active?pal.bg:CARD_BG,color:active?pal.fg:TEXT_M,fontSize:12,cursor:"pointer",fontFamily:"inherit",transition:"all .2s",boxShadow:active?`0 4px 12px ${pal.bg}40`:"none"}}>
-              {c.id!=="all"&&<SpotCatIcon id={c.id} size={13} color={active?pal.fg:TEXT_M}/>}
-              {c.label}
-            </button>
-          );
-        })}
-      </div>
+      {/* 分類 Tab — 兩排橫向捲動 */}
+      {(()=>{
+        const allCats=[{id:"all",label:"全部 ("+bookmarks.length+")"},...SPOT_CATS.map(c=>({...c,label:c.label+" ("+catCount(c.id)+")"}))];
+        return(
+          <div style={{paddingLeft:16,paddingRight:16,marginBottom:10}}>
+            {[0,1].map(row=>(
+              <div key={row} style={{display:"flex",gap:5,overflowX:"auto",scrollbarWidth:"none",WebkitOverflowScrolling:"touch",paddingBottom:5}}>
+                {allCats.filter((_,i)=>row===0?i%2===0:i%2===1).map(c=>(
+                  <button key={c.id} onClick={()=>setSelCat(c.id)}
+                    style={{display:"flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:20,border:"1.5px solid "+(selCat===c.id?pal.bg:BORDER),background:selCat===c.id?pal.bg:CARD_BG,color:selCat===c.id?pal.fg:TEXT_M,fontSize:11,cursor:"pointer",fontFamily:"inherit",transition:"all .15s",flexShrink:0,whiteSpace:"nowrap"}}>
+                    {c.id!=="all"&&<SpotCatIcon id={c.id} size={11} color={selCat===c.id?pal.fg:TEXT_M}/>}
+                    {c.label}
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* 新增按鈕 */}
       <div style={{padding:"0 16px",marginBottom:14}}>
@@ -914,36 +935,33 @@ function BookmarkTab({ trip, onUpdate }){
         </div>
       )}
 
-      {/* 3×3 格狀（僅格狀模式）*/}
+      {/* 4×N 格狀（僅格狀模式）*/}
       {viewMode==="grid"&&filtered.length>0&&(
-        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:2,padding:"0 0"}}>
-          {filtered.map(item=>{
-            const catInfo=SPOT_CATS.find(c=>c.id===item.cat)||SPOT_CATS[0];
-            const thumb=item.images&&item.images.length>0?item.images[0]:null;
-            return(
-              <div key={item.id} onClick={()=>setDetailItem(item)}
-                style={{position:"relative",aspectRatio:"1",overflow:"hidden",cursor:"pointer",background:APP_BG}}>
-                {thumb
-                  ? <img src={thumb} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-                  : <div style={{width:"100%",height:"100%",background:`${pal.bg}20`,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:6}}>
-                      <SpotCatIcon id={item.cat} size={22} color={pal.bg}/>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:2}}>
+          {filtered.map(item=>(
+            <div key={item.id} onClick={()=>setDetailItem(item)}
+              style={{position:"relative",aspectRatio:"1",overflow:"hidden",cursor:"pointer",background:APP_BG}}>
+              {(item.images&&item.images.length>0)
+                ? <img src={item.images[0]} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                : <div style={{width:"100%",height:"100%",background:pal.bg+"20",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4}}>
+                    <SpotCatIcon id={item.cat} size={18} color={pal.bg}/>
+                    <div style={{fontSize:8,color:pal.bg,opacity:.7,letterSpacing:"0.04em"}}>
+                      {(SPOT_CATS.find(c=>c.id===item.cat)||SPOT_CATS[0]).label.toUpperCase()}
                     </div>
-                }
-                {/* 底部漸層 + 名稱 */}
-                <div style={{position:"absolute",bottom:0,left:0,right:0,background:"linear-gradient(to top,rgba(0,0,0,.65) 0%,transparent 100%)",padding:"20px 6px 6px"}}>
-                  <div style={{fontSize:10,color:"#fff",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",lineHeight:1.3}}>{item.name}</div>
-                  <div style={{fontSize:9,color:"rgba(255,255,255,.7)",marginTop:1}}>{catInfo.label}</div>
-                </div>
-                {/* 多張照片角標 */}
-                {item.images&&item.images.length>1&&(
-                  <div style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,.5)",borderRadius:6,padding:"2px 5px",display:"flex",alignItems:"center",gap:3}}>
-                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><rect x="2" y="7" width="15" height="15" rx="2"/><path d="M22 2H7a2 2 0 00-2 2v1"/></svg>
-                    <span style={{fontSize:9,color:"#fff"}}>{item.images.length}</span>
                   </div>
-                )}
+              }
+              <div style={{position:"absolute",bottom:0,left:0,right:0,background:"linear-gradient(to top,rgba(0,0,0,.65) 0%,transparent 100%)",padding:"14px 4px 4px"}}>
+                <div style={{fontSize:9,color:"#fff",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",lineHeight:1.3}}>{item.name}</div>
+                <div style={{fontSize:8,color:"rgba(255,255,255,.75)"}}>{(SPOT_CATS.find(c=>c.id===item.cat)||SPOT_CATS[0]).label}</div>
               </div>
-            );
-          })}
+              {item.images&&item.images.length>1&&(
+                <div style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,.5)",borderRadius:6,padding:"2px 5px",display:"flex",alignItems:"center",gap:3}}>
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><rect x="2" y="7" width="15" height="15" rx="2"/><path d="M22 2H7a2 2 0 00-2 2v1"/></svg>
+                  <span style={{fontSize:9,color:"#fff"}}>{item.images.length}</span>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
 
@@ -1019,7 +1037,7 @@ function BookmarkTab({ trip, onUpdate }){
           {/* 分類 */}
           <div>
             <label style={{fontSize:11,color:TEXT_L,display:"block",marginBottom:8,letterSpacing:"0.07em",textTransform:"uppercase"}}>分類</label>
-            <div style={{display:"flex",gap:8}}>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
               {SPOT_CATS.map(c=>{
                 const sel=fCat===c.id;
                 return(
