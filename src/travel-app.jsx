@@ -1834,16 +1834,16 @@ function ExchangeRateWidget(){
   const fetchRates = async () => {
     setLoading(true); setError(null);
     try {
-      // 用 Frankfurter 免費匯率 API（不需要 key）
-      // 以 TWD 為基準取各幣別匯率
-      const res = await fetch("https://api.frankfurter.app/latest?from=TWD&to=USD,JPY,KRW,EUR,GBP,THB,SGD");
+      const res = await fetch("https://api.frankfurter.dev/v2/latest?base=TWD&symbols=USD,JPY,KRW,EUR,GBP,THB,SGD");
       if(!res.ok) throw new Error();
       const data = await res.json();
       const clean = { TWD: 1, ...data.rates };
       setRates(clean);
       setUpdated(new Date().toLocaleDateString("zh-TW"));
     } catch {
-      setError("無法取得匯率");
+      // 備援：用固定匯率
+      setRates({TWD:1,USD:0.031,JPY:4.65,KRW:42.5,EUR:0.029,GBP:0.025,THB:1.08,SGD:0.042});
+      setUpdated("離線匯率");
     }
     setLoading(false);
   };
