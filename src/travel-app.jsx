@@ -1627,8 +1627,8 @@ function TripListTab({trip, onUpdate, pal}){
             <SwipeDelete key={k} onDelete={()=>setConfirmDel({item:typeof v==="object"?v.label||"備忘項目":"備忘項目", action:()=>setEmergInfo(p=>{const n={...p};delete n[k];return n;})})}>
               <div style={{background:APP_BG,borderRadius:12,padding:"9px 12px"}}>
                 <input value={typeof v==="object"?v.label||"":""} onChange={e=>setEmergInfo(p=>({...p,[k]:{...(typeof p[k]==="object"?p[k]:{}),label:e.target.value}}))}
-                  placeholder="項目名稱（例如：旅遊保險單號）"
-                  style={{width:"100%",background:"transparent",border:"none",borderBottom:`1px solid ${BORDER}`,padding:"3px 0",fontFamily:"inherit",fontSize:12,color:TEXT_M,outline:"none",marginBottom:5,fontWeight:600,letterSpacing:"0.04em"}}/>
+                  placeholder="項目名稱"
+                  style={{width:"100%",background:"transparent",border:"none",borderBottom:`1px solid ${BORDER}`,padding:"3px 0",fontFamily:"inherit",fontSize:10,color:TEXT_L,outline:"none",marginBottom:5,letterSpacing:"0.05em",textTransform:"uppercase"}}/>
                 <input value={typeof v==="object"?v.value||"":v||""} onChange={e=>setEmergInfo(p=>({...p,[k]:{...(typeof p[k]==="object"?p[k]:{}),value:e.target.value}}))}
                   placeholder="內容"
                   style={{width:"100%",background:"transparent",border:"none",borderBottom:`1px solid ${BORDER}`,padding:"3px 0",fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none"}}/>
