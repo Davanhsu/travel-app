@@ -1834,31 +1834,12 @@ function ExchangeRateWidget(){
   const fetchRates = async () => {
     setLoading(true); setError(null);
     try {
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          tools: [{ type: "web_search_20250305", name: "web_search" }],
-          messages: [{
-            role: "user",
-            content: `Search for today's exchange rates. Return ONLY a valid JSON object with no markdown, no explanation, just the raw JSON. The object should have these exact keys with numeric values representing how much 1 TWD equals in each currency: {"USD":0,"JPY":0,"KRW":0,"EUR":0,"GBP":0,"THB":0,"SGD":0}. Use the most current rates available.`
-          }]
-        })
-      });
+      // 用 Frankfurter 免費匯率 API（不需要 key）
+      // 以 TWD 為基準取各幣別匯率
+      const res = await fetch("https://api.frankfurter.app/latest?from=TWD&to=USD,JPY,KRW,EUR,GBP,THB,SGD");
+      if(!res.ok) throw new Error();
       const data = await res.json();
-      const text = (data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("");
-      const match = text.match(/\{[^{}]*"USD"[^{}]*\}/);
-      if(!match) throw new Error();
-      const parsed = JSON.parse(match[0]);
-      // 確保所有值都是數字
-      const clean = {};
-      ["USD","JPY","KRW","EUR","GBP","THB","SGD"].forEach(k=>{
-        if(typeof parsed[k]==="number" && parsed[k]>0) clean[k]=parsed[k];
-      });
-      clean["TWD"] = 1;
-      if(Object.keys(clean).length < 5) throw new Error();
+      const clean = { TWD: 1, ...data.rates };
       setRates(clean);
       setUpdated(new Date().toLocaleDateString("zh-TW"));
     } catch {
