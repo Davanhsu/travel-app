@@ -1377,7 +1377,7 @@ function TripListTab({trip, onUpdate, pal}){
     {key:"insurance",label:"保險公司",     ph:"24小時支援專線"},
     {key:"hotel",    label:"飯店資訊",     ph:"飯店名稱及地址"},
   ];
-  const PHRASES=["請問廁所在哪裡？","請幫我叫救護車 謝謝","請問附近有藥局嗎","請問這個多少錢？","請帶我去這個地址"];
+  const PHRASES=["請問廁所在哪裡？","請幫我叫救護車 謝謝","請問附近有藥局嗎？","請問這個多少錢？","請帶我去這個地址"];
   const allPhrases=[...PHRASES,...customPhrases];
   const destLang=trip.currency==="JPY"?"日文":trip.currency==="KRW"?"韓文":trip.currency==="THB"?"泰文":"英文";
   const FTYPES=[{id:"depart",label:"去程"},{id:"transit",label:"轉機"},{id:"return",label:"回程"}];
