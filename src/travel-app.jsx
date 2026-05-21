@@ -1112,11 +1112,10 @@ function BookmarkTab({ trip, onUpdate }){
 // ─────────────────────────────────────────────────────────────
 
 const CHECKLIST_CATS = [
-  { id:"docs",        label:"證件",   items:["外幣","護照","機票","簽證","國際駕照","旅平險","住宿訂單"] },
+  { id:"docs",        label:"證件",   items:["護照","機票（電子票）","簽證","國際駕照","保險卡","住宿訂單"] },
   { id:"clothes",     label:"衣物",   items:["外套","換洗衣物","內衣褲","睡衣","鞋子","帽子"] },
-  { id:"beauty",      label:"美容",   items:["洗沐用品","保養品","化妝品","美髮用品","防曬用品"] },
-  { id:"electronics", label:"電子",   items:["手機","充電器/插頭轉換","行動電源","相機"] },
-  { id:"medical",     label:"醫藥",   items:["常備藥","止痛藥","腸胃藥","OK繃"] },
+  { id:"electronics", label:"電子",   items:["手機＋充電線","充電器/插頭轉換","行動電源","相機","耳機"] },
+  { id:"medical",     label:"醫藥",   items:["常備藥","止痛藥","腸胃藥","創可貼","防蚊液","防曬乳"] },
 ];
 
 // ─── 左滑刪除 / 右滑取消（無內建 Dialog，由外部處理確認）───
@@ -1372,12 +1371,13 @@ function TripListTab({trip, onUpdate, pal}){
   );
 
   const EMERG=[
-    {key:"embassy",  label:"台灣駐外辦事處", ph:"大使館/辦事處電話"},
-    {key:"ambulance",label:"緊急聯絡救護",   ph:"急救電話（如 119）"},
+    {key:"embassy",  label:"台灣駐外館處", ph:"大使館/辦事處電話"},
+    {key:"ambulance",label:"當地救護車",   ph:"急救電話（如 119）"},
     {key:"insurance",label:"保險公司",     ph:"24小時支援專線"},
-    {key:"hotel",    label:"飯店資訊",     ph:"飯店名稱及地址"},
+    {key:"passport", label:"護照號碼",     ph:"備份護照號碼"},
+    {key:"hotel",    label:"住宿地址",     ph:"飯店名稱及地址"},
   ];
-  const PHRASES=["請問廁所在哪裡？","請幫我叫救護車 謝謝","請問附近有藥局嗎？","請問這個多少錢？","請帶我去這個地址"];
+  const PHRASES=["請問廁所在哪裡？","請叫救護車","我需要看醫生","這個多少錢？","我迷路了","請帶我去這個地址"];
   const allPhrases=[...PHRASES,...customPhrases];
   const destLang=trip.currency==="JPY"?"日文":trip.currency==="KRW"?"韓文":trip.currency==="THB"?"泰文":"英文";
   const FTYPES=[{id:"depart",label:"去程"},{id:"transit",label:"轉機"},{id:"return",label:"回程"}];
