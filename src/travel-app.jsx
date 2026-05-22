@@ -975,13 +975,13 @@ function BookmarkTab({ trip, onUpdate }){
               {/* 滑動照片 */}
               {item.images&&item.images.length>0&&(
                 <div style={{position:"relative",borderRadius:16,overflow:"hidden",height:220,marginBottom:14}}>
-                  <div style={{display:"flex",height:"100%",overflowX:"auto",scrollSnapType:"x mandatory",scrollbarWidth:"none",WebkitOverflowScrolling:"touch",gap:0}}>
+                  <HorizontalScroll height="100%">
                     {item.images.map((src,i)=>(
                       <div key={i} style={{flexShrink:0,width:"100%",height:"100%",scrollSnapAlign:"start"}}>
                         <img src={src} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
                       </div>
                     ))}
-                  </div>
+                  </HorizontalScroll>
                   {item.images.length>1&&(
                     <div style={{position:"absolute",bottom:8,left:0,right:0,display:"flex",justifyContent:"center",gap:4}}>
                       {item.images.map((_,i)=>(
@@ -1335,6 +1335,44 @@ function ChecklistItem({item, done, onToggle, onRename, pal}){
             {item}
           </span>
       }
+    </div>
+  );
+}
+
+// ─── 鎖定橫向滑動（阻止垂直捲動穿透）───
+function HorizontalScroll({children, height}){
+  const ref = useRef(null);
+  useEffect(()=>{
+    const el = ref.current;
+    if(!el) return;
+    let startX=0, startY=0, decided=false, active=false;
+    const onStart = e=>{
+      startX=e.touches[0].clientX;
+      startY=e.touches[0].clientY;
+      decided=false; active=true;
+    };
+    const onMove = e=>{
+      if(!active) return;
+      const dx=Math.abs(e.touches[0].clientX-startX);
+      const dy=Math.abs(e.touches[0].clientY-startY);
+      if(!decided&&(dx>4||dy>4)){
+        decided=true;
+        if(dx>dy) e.preventDefault(); // 橫向滑動：攔截
+        else active=false;             // 垂直滑動：放行
+      } else if(decided&&active){
+        e.preventDefault();
+      }
+    };
+    el.addEventListener("touchstart",onStart,{passive:true});
+    el.addEventListener("touchmove",onMove,{passive:false});
+    return()=>{
+      el.removeEventListener("touchstart",onStart);
+      el.removeEventListener("touchmove",onMove);
+    };
+  },[]);
+  return(
+    <div ref={ref} style={{display:"flex",height,overflowX:"auto",scrollSnapType:"x mandatory",scrollbarWidth:"none",WebkitOverflowScrolling:"touch",gap:0}}>
+      {children}
     </div>
   );
 }
