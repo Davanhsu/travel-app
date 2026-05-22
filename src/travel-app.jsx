@@ -3032,102 +3032,28 @@ const TRANSIT_ART = {
 };
 
 function TransitBar({from,fromUrl,to,toUrl,pal}){
-  const [info,setInfo]=useState(null);
-  const [loading,setLoading]=useState(false);
-
-  // 從 Google Maps / Naver Maps URL 萃取座標
-  const extractCoords = (url)=>{
-    if(!url) return null;
-    // Google Maps: @lat,lon
-    const m1 = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
-    if(m1) return {lat:parseFloat(m1[1]),lon:parseFloat(m1[2])};
-    // Google Maps: q=lat,lon
-    const m2 = url.match(/[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/);
-    if(m2) return {lat:parseFloat(m2[1]),lon:parseFloat(m2[2])};
-    // Naver Maps: lat=N&lng=N 或 y=N&x=N
-    const m3 = url.match(/[?&]lat=(-?\d+\.\d+).*[?&]lng=(-?\d+\.\d+)/);
-    if(m3) return {lat:parseFloat(m3[1]),lon:parseFloat(m3[2])};
-    const m4 = url.match(/[?&]y=(-?\d+\.\d+).*[?&]x=(-?\d+\.\d+)/);
-    if(m4) return {lat:parseFloat(m4[1]),lon:parseFloat(m4[2])};
-    // Naver Maps: /place/ID 型式 → 無法直接取座標，返回 null
-    return null;
-  };
-
-  const geocode = async(name)=>{
-    // 清理地名：移除地圖連結、只保留文字
-    const clean = name.replace(/https?:\/\/\S+/g,'').trim();
-    if(!clean) return null;
-    const r = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(clean)}&format=json&limit=1`,
-      {headers:{"Accept-Language":"ko,zh-TW,en","User-Agent":"travel-app"}}
-    );
-    const d = await r.json();
-    if(!d.length) return null;
-    return {lat:parseFloat(d[0].lat),lon:parseFloat(d[0].lon)};
-  };
-
-  const estimateByDist = (distKm)=>{
-    if(distKm===null) return {mode:"bus",duration:"約15分鐘"};
-    if(distKm<0.8)   return {mode:"walk",  duration:Math.round(distKm/0.08)+"分鐘"};
-    if(distKm<20)    return {mode:"metro", duration:Math.round(distKm*2.5+5)+"分鐘"};
-    if(distKm<100)   return {mode:"bus",   duration:Math.round(distKm*1.5+15)+"分鐘"};
-    return              {mode:"flight",duration:Math.round(distKm/10+60)+"分鐘"};
-  };
-
-  useEffect(()=>{
-    if(!from||!to||from==="未定地點"||to==="未定地點") return;
-    setLoading(true);
-    (async()=>{
-      try{
-        // 優先用 URL 座標，否則 geocode
-        let a = extractCoords(fromUrl) || await geocode(from);
-        let b = extractCoords(toUrl)   || await geocode(to);
-
-        if(!a||!b){
-          // 至少一個找不到 → 用預設估算
-          setInfo(estimateByDist(null));
-          setLoading(false);
-          return;
-        }
-
-        const res = await fetch(
-          `https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`
-        );
-        const data = await res.json();
-        const distKm = (data.routes?.[0]?.distance||0)/1000;
-        setInfo(estimateByDist(distKm));
-      } catch {
-        setInfo(estimateByDist(null));
-      }
-      setLoading(false);
-    })();
-  },[from,to,fromUrl,toUrl]);
-
   if(!from||!to||from==="未定地點"||to==="未定地點") return null;
 
   const isKorean = (str)=> /[\uAC00-\uD7AF\u1100-\u11FF]/.test(str||"");
-  const mapsUrl = (()=>{
-    if(isKorean(from)||isKorean(to)||(toUrl&&toUrl.includes("naver"))||(fromUrl&&fromUrl.includes("naver"))){
-      // 韓國地點用 Naver Maps 網頁版導航
-      return `https://map.naver.com/v5/directions/${encodeURIComponent(from)}/${encodeURIComponent(to)}/-/transit`;
-    }
-    return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(from)}&destination=${encodeURIComponent(to)}&travelmode=transit`;
-  })();
+  const useNaver = isKorean(from)||isKorean(to)||(toUrl&&toUrl.includes("naver"))||(fromUrl&&fromUrl.includes("naver"));
 
-  const mode=["walk","metro","bus","taxi","flight"].includes(info?.mode)?info.mode:"bus";
-  const color=TRANSIT_COLORS[mode];
+  const mapsUrl = useNaver
+    ? `https://m.map.naver.com/transit/routes?sx=&sy=&ex=&ey=&sname=${encodeURIComponent(from)}&ename=${encodeURIComponent(to)}`
+    : `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(from)}&destination=${encodeURIComponent(to)}&travelmode=transit`;
+
+  const color = useNaver ? "#03C75A" : TRANSIT_COLORS["metro"];
 
   return(
     <button onClick={()=>window.open(mapsUrl,"_blank")}
-      style={{display:"flex",alignItems:"center",gap:6,margin:"0 0 0 18px",padding:"4px 10px 4px 8px",background:"none",border:`1px solid ${color}35`,borderRadius:20,cursor:"pointer",fontFamily:"inherit"}}>
+      style={{display:"flex",alignItems:"center",gap:6,margin:"0 0 0 18px",padding:"4px 12px 4px 8px",background:"none",border:`1px solid ${color}40`,borderRadius:20,cursor:"pointer",fontFamily:"inherit"}}>
       <div style={{width:1,height:16,background:BORDER,flexShrink:0}}/>
-      <span style={{display:"flex",alignItems:"center",color}}>
-        {loading
-          ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={TEXT_L} strokeWidth="2" strokeLinecap="round"><path d="M12 3a9 9 0 100 18A9 9 0 0012 3z" strokeDasharray="30" strokeDashoffset="8"/></svg>
-          : TRANSIT_ART[mode]?.(color)
+      <span style={{display:"flex",alignItems:"center"}}>
+        {useNaver
+          ? <svg width="13" height="13" viewBox="0 0 24 24" fill={color}><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+          : TRANSIT_ART["metro"]?.(color)
         }
       </span>
-      <span style={{fontSize:11,fontWeight:600,color,letterSpacing:"0.02em"}}>{loading?"…":info?.duration||"—"}</span>
+      <span style={{fontSize:11,fontWeight:600,color,letterSpacing:"0.02em"}}>查看路線</span>
       <Icon name="external-link" size={9} color={TEXT_L} sw={1.5}/>
     </button>
   );
