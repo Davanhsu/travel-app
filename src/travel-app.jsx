@@ -3040,7 +3040,7 @@ function TransitBar({from,fromUrl,to,toUrl,pal}){
     setLoading(true);
     fetch("https://api.anthropic.com/v1/messages",{
       method:"POST",
-      headers:{"Content-Type":"application/json"},
+      headers:{"Content-Type":"application/json","anthropic-dangerous-direct-browser-access":"true"},
       body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:100,
         messages:[{role:"user",content:`Transit from "${from}" to "${to}". Reply ONLY JSON: {"mode":"walk|metro|bus|taxi|flight","duration":"XX分鐘"}`}]})
     })
