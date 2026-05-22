@@ -1993,9 +1993,9 @@ const RATE_CURRENCIES = [
   {code:"SGD",symbol:"S$", name:"新幣"},
 ];
 
-function ExchangeRateWidget(){
-  const [fromCode, setFromCode] = useState("TWD");
-  const [toCode,   setToCode]   = useState("JPY");
+function ExchangeRateWidget({defaultCurrency="JPY"}){
+  const [fromCode, setFromCode] = useState(defaultCurrency);
+  const [toCode,   setToCode]   = useState("TWD");
   const [fromAmt,  setFromAmt]  = useState("1000");
   const [rates,    setRates]    = useState(null); // 以TWD為基準的原始率
   const [loading,  setLoading]  = useState(false);
@@ -2380,7 +2380,7 @@ function WalletTab({trip,onUpdate}){
       </div>
 
       {/* 匯率換算 */}
-      <ExchangeRateWidget/>
+      <ExchangeRateWidget defaultCurrency={trip.currency||"JPY"}/>
 
       {/* 記帳列表 */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
