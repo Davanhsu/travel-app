@@ -3221,8 +3221,8 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
                   </div>
                 </div>
               </div>
-              {/* 行程間 TransitBar */}
-              {i<schedule.length-1&&(
+              {/* 行程間 TransitBar — 韓國行程（KRW）不顯示 */}
+              {i<schedule.length-1&&trip.currency!=="KRW"&&(
                 <TransitBar
                   from={ev.location} fromUrl={ev.locationUrl}
                   to={schedule[i+1].location} toUrl={schedule[i+1].locationUrl}
