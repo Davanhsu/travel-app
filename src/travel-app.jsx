@@ -3038,37 +3038,44 @@ function TransitBar({from,fromUrl,to,toUrl,pal}){
   useEffect(()=>{
     if(!from||!to||from==="未定地點"||to==="未定地點") return;
     setLoading(true);
-    fetch("https://api.anthropic.com/v1/messages",{
-      method:"POST",
-      headers:{"Content-Type":"application/json","anthropic-dangerous-direct-browser-access":"true"},
-      body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:100,
-        messages:[{role:"user",content:`Transit from "${from}" to "${to}". Reply ONLY JSON: {"mode":"walk|metro|bus|taxi|flight","duration":"XX分鐘"}`}]})
-    })
-    .then(r=>r.json())
-    .then(data=>{
-      const text=(data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("");
-      const m=text.match(/\{[^{}]*"mode"[^{}]*\}/);
-      if(m) setInfo(JSON.parse(m[0]));
-      else setInfo({mode:"bus",duration:"—"});
-    })
-    .catch(()=>setInfo({mode:"bus",duration:"—"}))
-    .finally(()=>setLoading(false));
+
+    // 用 Nominatim 地理編碼 + OSRM 路線計算（免費，不需要 key）
+    const geocode = async(name)=>{
+      const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(name)}&format=json&limit=1`,{headers:{"Accept-Language":"zh-TW,en"}});
+      const d = await r.json();
+      if(d.length===0) throw new Error("not found");
+      return {lat:parseFloat(d[0].lat),lon:parseFloat(d[0].lon)};
+    };
+
+    (async()=>{
+      try{
+        const [a,b] = await Promise.all([geocode(from), geocode(to)]);
+        // OSRM 步行距離（用來估算最短距離）
+        const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`);
+        const data = await res.json();
+        const distKm = data.routes?.[0]?.distance / 1000 || 0;
+
+        // 根據距離估算交通方式和時間
+        let mode, mins;
+        if(distKm < 1){        mode="walk";  mins=Math.round(distKm/0.08);}
+        else if(distKm < 5){   mode="metro"; mins=Math.round(distKm*3+5);}
+        else if(distKm < 20){  mode="metro"; mins=Math.round(distKm*2+8);}
+        else if(distKm < 100){ mode="bus";   mins=Math.round(distKm*1.5+15);}
+        else{                  mode="flight"; mins=Math.round(distKm/10+60);}
+
+        setInfo({mode, duration: mins+"分鐘"});
+      } catch {
+        setInfo({mode:"bus", duration:"—"});
+      }
+      setLoading(false);
+    })();
   },[from,to]);
 
   if(!from||!to||from==="未定地點"||to==="未定地點") return null;
 
-  // 導航連結：優先用 locationUrl，否則用地點名稱串 Google Maps
-  const mapsUrl = (() => {
-    if(fromUrl&&toUrl){
-      // 兩個都有連結：用 Google Maps dir 串地點名稱（連結不適合串接）
-      return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(from)}&destination=${encodeURIComponent(to)}&travelmode=transit`;
-    }
-    if(toUrl&&toUrl.startsWith("http")){
-      // 目的地有連結：直接開啟目的地連結
-      return toUrl;
-    }
-    return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(from)}&destination=${encodeURIComponent(to)}&travelmode=transit`;
-  })();
+  const mapsUrl = (toUrl&&toUrl.startsWith("http"))
+    ? toUrl
+    : `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(from)}&destination=${encodeURIComponent(to)}&travelmode=transit`;
 
   const mode=["walk","metro","bus","taxi","flight"].includes(info?.mode)?info.mode:"bus";
   const color=TRANSIT_COLORS[mode];
@@ -3076,7 +3083,7 @@ function TransitBar({from,fromUrl,to,toUrl,pal}){
   return(
     <button onClick={()=>window.open(mapsUrl,"_blank")}
       style={{display:"flex",alignItems:"center",gap:6,margin:"0 0 0 18px",padding:"4px 10px 4px 8px",background:"none",border:`1px solid ${color}35`,borderRadius:20,cursor:"pointer",fontFamily:"inherit"}}>
-      <div style={{width:1,height:16,background:`${BORDER}`,flexShrink:0}}/>
+      <div style={{width:1,height:16,background:BORDER,flexShrink:0}}/>
       <span style={{display:"flex",alignItems:"center",color}}>
         {loading
           ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={TEXT_L} strokeWidth="2" strokeLinecap="round"><path d="M12 3a9 9 0 100 18A9 9 0 0012 3z" strokeDasharray="30" strokeDashoffset="8"/></svg>
