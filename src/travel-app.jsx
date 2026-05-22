@@ -3102,9 +3102,15 @@ function TransitBar({from,fromUrl,to,toUrl,pal}){
 
   if(!from||!to||from==="未定地點"||to==="未定地點") return null;
 
-  const mapsUrl = (toUrl&&toUrl.startsWith("http"))
-    ? toUrl
-    : `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(from)}&destination=${encodeURIComponent(to)}&travelmode=transit`;
+  const mapsUrl = (()=>{
+    // 判斷目的地連結是哪個地圖服務，用對應的導航格式
+    if(toUrl&&toUrl.includes("naver")){
+      // Naver Maps 導航：from 用地名，to 用地名（Naver 不支援直接帶外部座標導航）
+      return `https://map.naver.com/v5/directions/-/-/${encodeURIComponent(to)}/-/transit`;
+    }
+    // 統一用 Google Maps 導航
+    return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(from)}&destination=${encodeURIComponent(to)}&travelmode=transit`;
+  })();
 
   const mode=["walk","metro","bus","taxi","flight"].includes(info?.mode)?info.mode:"bus";
   const color=TRANSIT_COLORS[mode];
