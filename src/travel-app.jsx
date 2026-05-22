@@ -1377,9 +1377,11 @@ function HorizontalScroll({children, height}){
 
 function TripListTab({trip, onUpdate, pal}){
   const [openCat,      setOpenCat]      = useState("docs");
-  const [openChecklist,setOpenChecklist]= useState(true);
+  const [openChecklist,setOpenChecklist]= useState(false);
   const [openEmerg,    setOpenEmerg]    = useState(false);
   const [openTrans,    setOpenTrans]    = useState(false);
+  const [openMemo,     setOpenMemo]     = useState(false);
+  const [memoText,     setMemoText]     = useState("");
   const [openFlight,   setOpenFlight]   = useState(false);
   const [openCards,    setOpenCards]    = useState(false);
   const [cards,        setCards]        = useState([]); // [{id,name,scene,perk,note}]
@@ -1748,6 +1750,24 @@ function TripListTab({trip, onUpdate, pal}){
                   style={{padding:"7px 12px",borderRadius:10,background:pal.bg,border:"none",cursor:"pointer",color:"#fff",fontSize:14,fontFamily:"inherit"}}>＋</button>
               </div>
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* 旅遊備忘錄 */}
+      <div style={card}>
+        {hd("旅遊備忘錄",
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>,
+          openMemo,()=>setOpenMemo(v=>!v),null)}
+        {openMemo&&(
+          <div style={{borderTop:`1px solid ${BORDER}`,padding:"12px 14px"}}>
+            <textarea
+              value={memoText}
+              onChange={e=>setMemoText(e.target.value)}
+              placeholder={"自由記錄旅遊備忘...\n例如：訂房確認碼、換錢地點、購物清單、注意事項"}
+              style={{width:"100%",minHeight:160,padding:"12px 14px",border:`1.5px solid ${BORDER}`,borderRadius:14,background:APP_BG,fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none",resize:"none",lineHeight:1.8,boxSizing:"border-box",whiteSpace:"pre-wrap"}}
+            />
+            <div style={{fontSize:10,color:TEXT_L,marginTop:6,textAlign:"right"}}>{memoText.length} 字</div>
           </div>
         )}
       </div>
@@ -3133,27 +3153,21 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
 
     return (
     <>
-      {/* 今日動線 — 路線規劃區塊 */}
-      <div style={{background:CARD_BG,borderRadius:"0 0 20px 20px",padding:"12px 16px 14px",boxShadow:"0 4px 12px rgba(0,0,0,.07)"}}>
+      {/* 今日動線 — 路線規劃區塊（韓國行程不顯示）*/}
+      {trip.currency!=="KRW"&&<div style={{background:CARD_BG,borderRadius:"0 0 20px 20px",padding:"12px 16px 14px",boxShadow:"0 4px 12px rgba(0,0,0,.07)"}}>
         {validLocations.length>0 ? (
-          <>
-            {/* 按鈕列 */}
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={()=>{
-                const url = buildRouteUrl();
-                if(url) window.open(url,"_blank");
-              }}
-                style={{flex:1,padding:"9px 0",borderRadius:12,background:pal.bg,color:pal.fg,fontSize:11,fontWeight:600,border:"none",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
-                <Icon name="map" size={13} color={pal.fg} sw={1.8}/> 一鍵規劃路線
-              </button>
-            </div>
-          </>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={()=>{ const url=buildRouteUrl(); if(url) window.open(url,"_blank"); }}
+              style={{flex:1,padding:"9px 0",borderRadius:12,background:pal.bg,color:pal.fg,fontSize:11,fontWeight:600,border:"none",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+              <Icon name="map" size={13} color={pal.fg} sw={1.8}/> 一鍵規劃路線
+            </button>
+          </div>
         ) : (
           <div style={{display:"flex",alignItems:"center",gap:7,color:TEXT_L,fontSize:11,padding:"4px 0"}}>
             <Icon name="map" size={14} color={BORDER}/> 新增地點後顯示今日動線
           </div>
         )}
-      </div>
+      </div>}
       {/* 行程卡 */}
       <div style={{margin:"12px 15px 0",background:CARD_BG,borderRadius:26,boxShadow:"0 4px 20px rgba(40,32,28,.09)",overflow:"hidden",marginBottom:16}}>
         <div style={{height:4,background:`linear-gradient(90deg,${pal.bg},${pal.bg}80,${pal.bg})`}}/>
