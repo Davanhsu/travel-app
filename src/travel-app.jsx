@@ -649,7 +649,7 @@ function FlightPanel({ trip, onUpdate, pal, show, onClose }){
   const delFlight = id => { updateTrip({ flights: flights.filter(f=>f.id!==id) }); setDelTarget(null); };
 
   const openTrack = f => {
-    window.open(`https://www.flightaware.com/live/flight/${encodeURIComponent(f.code)}`,"_blank");
+    window.open(`https://www.flightaware.com/live/flight/${encodeURIComponent(f.code)}/${f.from||""}/${f.to||""}`,"_blank");
   };
 
   // 排序：去程 → 轉機 → 回程
@@ -702,7 +702,7 @@ function FlightPanel({ trip, onUpdate, pal, show, onClose }){
                   </div>
                 )}
                 <div style={{display:"flex",gap:8}}>
-                  <button onClick={()=>window.open(`https://www.flightaware.com/live/flight/${encodeURIComponent(f.code)}`,"_blank")}
+                  <button onClick={()=>window.open(`https://www.flightaware.com/live/flight/${encodeURIComponent(f.code)}/${f.from||""}/${f.to||""}`,"_blank")}
                     style={{flex:1,padding:"8px 0",borderRadius:12,background:pal.bg,color:"#fff",fontSize:11,fontWeight:600,border:"none",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
                     <Icon name="external-link" size={12} color="#fff" sw={2}/> 即時動態
                   </button>
@@ -1398,7 +1398,31 @@ function TripListTab({trip, onUpdate, pal}){
 
   const [deletedItems,setDeletedItems]=useState({}); // catId → Set of deleted default items
   const [renamedItems,setRenamedItems]=useState({}); // catId → { 原名: 新名 }
-  const [confirmDel,  setConfirmDel]  = useState(null); // {catId, item} or {item, action}
+
+  const checklistRows = (() => {
+    const cat = CHECKLIST_CATS.find(c=>c.id===openCat);
+    const activeDefault = (cat?.items||[])
+      .filter(it=>!(deletedItems[openCat]||new Set()).has(it))
+      .map(it=>(renamedItems[openCat]||{})[it]||it);
+    const allItems = [...activeDefault,...(customItems[openCat]||[])];
+    return allItems.map((item,idx)=>{
+      const isCustom = idx>=activeDefault.length;
+      const origName = isCustom ? item :
+        Object.entries(renamedItems[openCat]||{}).find(([,v])=>v===item)?.[0] || item;
+      return {
+        key: origName+idx,
+        item, isCustom, origName,
+        done: !!(checked[openCat]?.[origName]||checked[openCat]?.[item]),
+      };
+    });
+  })();
+  const checklistTabData = CHECKLIST_CATS.map(c=>{
+    const ad=(c.items||[]).filter(it=>!(deletedItems[c.id]||new Set()).has(it)).map(it=>(renamedItems[c.id]||{})[it]||it);
+    const ai=[...ad,...(customItems[c.id]||[])];
+    return {id:c.id, label:c.label, total:ai.length, done:ai.filter(it=>checked[c.id]?.[it]).length};
+  });
+
+  const [confirmDel,  setConfirmDel]  = useState(null);
 
   const deleteItem=(catId,item,isCustom)=>{
     setConfirmDel({catId,item,isCustom});
@@ -1503,6 +1527,8 @@ function TripListTab({trip, onUpdate, pal}){
   const destLang=trip.currency==="JPY"?"日文":trip.currency==="KRW"?"韓文":trip.currency==="THB"?"泰文":"英文";
   const FTYPES=[{id:"depart",label:"去程"},{id:"transit",label:"轉機"},{id:"return",label:"回程"}];
 
+  const addEmergItem = e => { e.stopPropagation(); setEmergInfo(p => { const k = "custom_" + Date.now(); const n = {}; Object.assign(n, p); n[k] = {label:"",value:""}; return n; }); };
+
   return(
     <div style={{padding:"12px 14px 100px"}}>
 
@@ -1527,7 +1553,7 @@ function TripListTab({trip, onUpdate, pal}){
                     <span style={{fontFamily:"Georgia,serif",fontSize:14,fontWeight:700,color:TEXT_D}}>{f.code}</span>
                   </div>
                   <div style={{display:"flex",gap:5}}>
-                    <button onClick={e=>{e.stopPropagation();window.open(`https://www.flightaware.com/live/flight/${f.code}`,"_blank");}}
+                    <button onClick={e=>{e.stopPropagation();window.open(`https://www.flightaware.com/live/flight/${f.code}/${f.from||''}/${f.to||''}`,"_blank");}}
                       style={{fontSize:9,color:pal.bg,background:APP_BG,border:`1px solid ${BORDER}`,borderRadius:8,padding:"2px 7px",cursor:"pointer",fontFamily:"inherit"}}>追蹤</button>
                     <button onClick={e=>{e.stopPropagation();openEditFlight(f);}}
                       style={{width:24,height:24,borderRadius:7,background:APP_BG,border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -1597,50 +1623,30 @@ function TripListTab({trip, onUpdate, pal}){
           openChecklist,()=>setOpenChecklist(v=>!v),null)}
         {openChecklist&&<div style={{borderTop:`1px solid ${BORDER}`}}>
           <div style={{display:"flex",borderBottom:`1px solid ${BORDER}`}}>
-            {CHECKLIST_CATS.map(c=>{
-              // 正確計算：扣掉已刪除的預設項目，加上自訂項目
-              const activeDefault=(c.items||[]).filter(it=>!(deletedItems[c.id]||new Set()).has(it))
-                .map(it=>(renamedItems[c.id]||{})[it]||it);
-              const allItems=[...activeDefault,...(customItems[c.id]||[])];
-              const done=allItems.filter(it=>checked[c.id]?.[it]).length;
-              const sel=openCat===c.id;
-              return <button key={c.id} onClick={()=>setOpenCat(c.id)}
-                style={{flex:1,padding:"8px 2px",background:"none",border:"none",borderBottom:`2px solid ${sel?pal.bg:"transparent"}`,cursor:"pointer",fontFamily:"inherit"}}>
-                <div style={{fontSize:10,color:sel?pal.bg:TEXT_L,fontWeight:sel?600:400,textAlign:"center"}}>{c.label}</div>
-                <div style={{fontSize:9,color:done===allItems.length&&done>0?"#5A8A5A":TEXT_L,textAlign:"center"}}>{done}/{allItems.length}</div>
-              </button>;
-            })}
+            {checklistTabData.map(t=>(
+              <button key={t.id} onClick={()=>setOpenCat(t.id)}
+                style={{flex:1,padding:"8px 2px",background:"none",border:"none",borderBottom:`2px solid ${openCat===t.id?pal.bg:"transparent"}`,cursor:"pointer",fontFamily:"inherit"}}>
+                <div style={{fontSize:10,color:openCat===t.id?pal.bg:TEXT_L,fontWeight:openCat===t.id?600:400,textAlign:"center"}}>{t.label}</div>
+                <div style={{fontSize:9,color:t.done===t.total&&t.done>0?"#5A8A5A":TEXT_L,textAlign:"center"}}>{t.done}/{t.total}</div>
+              </button>
+            ))}
           </div>
           <div style={{padding:"6px 14px 10px"}}>
-            {(()=>{
-              const cat=CHECKLIST_CATS.find(c=>c.id===openCat);
-              const activeDefault=(cat?.items||[])
-                .filter(it=>!(deletedItems[openCat]||new Set()).has(it))
-                .map(it=>(renamedItems[openCat]||{})[it]||it);
-              const allItems=[...activeDefault,...(customItems[openCat]||[])];
-              const toggle=(origName)=>setChecked(p=>({...p,[openCat]:{...(p[openCat]||{}),[origName]:!(p[openCat]?.[origName])}}));
-              const getOrigName=(item,idx)=> idx>=activeDefault.length ? item :
-                Object.entries(renamedItems[openCat]||{}).find(([,v])=>v===item)?.[0] || item;
-              const handleRename=(item,idx,newName)=>{
-                if(!newName.trim()||newName===item) return;
-                if(idx>=activeDefault.length){
-                  setCustomItems(p=>({...p,[openCat]:(p[openCat]||[]).map(x=>x===item?newName.trim():x)}));
-                } else {
-                  setRenamedItems(p=>({...p,[openCat]:{...(p[openCat]||{}),[getOrigName(item,idx)]:newName.trim()}}));
-                }
-              };
-              return allItems.map((item,idx)=>(
-                <SwipeDelete key={item+idx} onDelete={()=>deleteItem(openCat, getOrigName(item,idx), idx>=activeDefault.length)}>
-                  <ChecklistItem
-                    item={item}
-                    done={!!(checked[openCat]?.[getOrigName(item,idx)]||checked[openCat]?.[item])}
-                    onToggle={e=>{e.stopPropagation();toggle(getOrigName(item,idx));}}
-                    onRename={newName=>handleRename(item,idx,newName)}
-                    pal={pal}
-                  />
-                </SwipeDelete>
-              ));
-            })()}
+            {checklistRows.map((row,idx)=>(
+              <SwipeDelete key={row.key} onDelete={()=>deleteItem(openCat, row.origName, row.isCustom)}>
+                <ChecklistItem
+                  item={row.item}
+                  done={row.done}
+                  onToggle={e=>{e.stopPropagation();setChecked(p=>({...p,[openCat]:{...(p[openCat]||{}),[row.origName]:!p[openCat]?.[row.origName]}}));}}
+                  onRename={newName=>{
+                    if(!newName.trim()||newName===row.item) return;
+                    if(row.isCustom) setCustomItems(p=>({...p,[openCat]:(p[openCat]||[]).map(x=>x===row.item?newName.trim():x)}));
+                    else setRenamedItems(p=>({...p,[openCat]:{...(p[openCat]||{}),[row.origName]:newName.trim()}}));
+                  }}
+                  pal={pal}
+                />
+              </SwipeDelete>
+            ))}
             <div style={{display:"flex",gap:6,marginTop:8}}>
               <input value={newItemText[openCat]||""} onChange={e=>setNewItemText(p=>({...p,[openCat]:e.target.value}))}
                 onKeyDown={e=>e.key==="Enter"&&addItem(openCat)} placeholder="新增項目…"
@@ -1662,7 +1668,7 @@ function TripListTab({trip, onUpdate, pal}){
         {hd("緊急資訊 & 重要備忘",
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>,
           openEmerg,()=>setOpenEmerg(v=>!v),null,
-          openEmerg&&<button onClick={e=>{e.stopPropagation();setEmergInfo(p=>({...p,[`custom_${Date.now()}`]:{label:"",value:""}}));}}
+          openEmerg&&<button onClick={addEmergItem}
             style={{padding:"4px 10px",borderRadius:10,background:pal.bg,border:"none",cursor:"pointer",fontSize:11,color:"#fff",fontFamily:"inherit",display:"flex",alignItems:"center",gap:3}}>
             <Icon name="plus" size={11} color="#fff"/> 新增
           </button>
@@ -1791,62 +1797,72 @@ function TripListTab({trip, onUpdate, pal}){
         onCancel={()=>setConfirmCard(null)} confirmLabel="確認刪除" danger/>
 
       <BottomSheet show={showFlightForm} onClose={()=>setShowFlightForm(false)} title={editFlight?"編輯航班":"新增航班"} maxH="95vh">
-        <div style={{display:"flex",flexDirection:"column",gap:11}}>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {/* 去程/轉機/回程 */}
           <div style={{display:"flex",gap:6}}>
             {FTYPES.map(t=>{const sel=fType===t.id;return(
               <button key={t.id} onClick={()=>setFType(t.id)}
-                style={{flex:1,padding:"7px 4px",borderRadius:20,background:sel?pal.bg:APP_BG,border:`1.5px solid ${sel?pal.bg:BORDER}`,cursor:"pointer",fontSize:11,color:sel?"#fff":TEXT_M,fontFamily:"inherit",fontWeight:sel?600:400,transition:"all .15s"}}>
+                style={{flex:1,padding:"6px 4px",borderRadius:20,background:sel?pal.bg:APP_BG,border:`1.5px solid ${sel?pal.bg:BORDER}`,cursor:"pointer",fontSize:11,color:sel?"#fff":TEXT_M,fontFamily:"inherit",fontWeight:sel?600:400}}>
                 {t.label}
               </button>
             );})}
           </div>
-          {[
-            {label:"航班代號",val:fCode,set:setFCode,ph:"JL123"},
-            {label:"出發地",val:fFrom,set:setFFrom,ph:"TPE"},
-            {label:"目的地",val:fTo,set:setFTo,ph:"NRT"},
-          ].map(f=>(
-            <div key={f.label} style={{display:"flex",flexDirection:"column",gap:4}}>
-              <label style={{fontSize:11,color:TEXT_L,letterSpacing:"0.07em",textTransform:"uppercase"}}>{f.label}</label>
-              <input value={f.val} onChange={e=>f.set(e.target.value)} placeholder={f.ph}
-                style={{padding:"10px 14px",border:`1.5px solid ${BORDER}`,borderRadius:12,background:APP_BG,fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none"}}/>
-            </div>
-          ))}
-          <div style={{display:"flex",gap:10}}>
-            <div style={{flex:1}}>
-              <label style={{fontSize:11,color:TEXT_L,letterSpacing:"0.07em",textTransform:"uppercase",display:"block",marginBottom:4}}>出發日期</label>
+          {/* 航班代號 + 出發地 + 目的地 */}
+          <div style={{display:"flex",gap:6}}>
+            {[{label:"航班",val:fCode,set:setFCode,ph:"JL123"},{label:"出發",val:fFrom,set:setFFrom,ph:"TPE"},{label:"目的",val:fTo,set:setFTo,ph:"NRT"}].map(f=>(
+              <div key={f.label} style={{flex:1}}>
+                <label style={{fontSize:10,color:TEXT_L,display:"block",marginBottom:3,textTransform:"uppercase"}}>{f.label}</label>
+                <input value={f.val} onChange={e=>f.set(e.target.value)} placeholder={f.ph}
+                  style={{width:"100%",padding:"8px 10px",border:`1.5px solid ${BORDER}`,borderRadius:12,background:APP_BG,fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none",boxSizing:"border-box"}}/>
+              </div>
+            ))}
+          </div>
+          {/* 出發日期 + 時間 */}
+          <div style={{display:"flex",gap:6}}>
+            <div style={{flex:2}}>
+              <label style={{fontSize:10,color:TEXT_L,display:"block",marginBottom:3,textTransform:"uppercase"}}>出發日期</label>
               <input type="date" value={fDepDate} onChange={e=>setFDepDate(e.target.value)}
-                style={{width:"100%",padding:"10px 14px",border:`1.5px solid ${BORDER}`,borderRadius:12,background:APP_BG,fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none"}}/>
+                style={{width:"100%",padding:"8px 10px",border:`1.5px solid ${BORDER}`,borderRadius:12,background:APP_BG,fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none",boxSizing:"border-box"}}/>
             </div>
             <div style={{flex:1}}>
-              <label style={{fontSize:11,color:TEXT_L,letterSpacing:"0.07em",textTransform:"uppercase",display:"block",marginBottom:4}}>出發時間</label>
+              <label style={{fontSize:10,color:TEXT_L,display:"block",marginBottom:3,textTransform:"uppercase"}}>出發時間</label>
               <MiniTimePicker value={fDepTime} onChange={setFDepTime}/>
             </div>
           </div>
-          <div style={{display:"flex",gap:10}}>
-            <div style={{flex:1}}>
-              <label style={{fontSize:11,color:TEXT_L,letterSpacing:"0.07em",textTransform:"uppercase",display:"block",marginBottom:4}}>抵達日期</label>
+          {/* 抵達日期 + 時間 */}
+          <div style={{display:"flex",gap:6}}>
+            <div style={{flex:2}}>
+              <label style={{fontSize:10,color:TEXT_L,display:"block",marginBottom:3,textTransform:"uppercase"}}>抵達日期</label>
               <input type="date" value={fArrDate} onChange={e=>setFArrDate(e.target.value)}
-                style={{width:"100%",padding:"10px 14px",border:`1.5px solid ${BORDER}`,borderRadius:12,background:APP_BG,fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none"}}/>
+                style={{width:"100%",padding:"8px 10px",border:`1.5px solid ${BORDER}`,borderRadius:12,background:APP_BG,fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none",boxSizing:"border-box"}}/>
             </div>
             <div style={{flex:1}}>
-              <label style={{fontSize:11,color:TEXT_L,letterSpacing:"0.07em",textTransform:"uppercase",display:"block",marginBottom:4}}>抵達時間</label>
+              <label style={{fontSize:10,color:TEXT_L,display:"block",marginBottom:3,textTransform:"uppercase"}}>抵達時間</label>
               <MiniTimePicker value={fArrTime} onChange={setFArrTime}/>
             </div>
           </div>
-          {[
-            {label:"航廈",val:fTerminal,set:setFTerminal,ph:"第二航廈"},
-            {label:"座位",val:fSeat,set:setFSeat,ph:"12A"},
-            {label:"備注",val:fNote2,set:setFNote2,ph:"線上報到截止 24 小時前"},
-          ].map(f=>(
-            <div key={f.label} style={{display:"flex",flexDirection:"column",gap:4}}>
-              <label style={{fontSize:11,color:TEXT_L,letterSpacing:"0.07em",textTransform:"uppercase"}}>{f.label}</label>
-              <input value={f.val} onChange={e=>f.set(e.target.value)} placeholder={f.ph}
-                style={{padding:"10px 14px",border:`1.5px solid ${BORDER}`,borderRadius:12,background:APP_BG,fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none"}}/>
+          {/* 航廈 + 座位 並排（縮小） */}
+          <div style={{display:"flex",gap:6}}>
+            <div style={{flex:1}}>
+              <label style={{fontSize:10,color:TEXT_L,display:"block",marginBottom:3,textTransform:"uppercase"}}>航廈</label>
+              <input value={fTerminal} onChange={e=>setFTerminal(e.target.value)} placeholder="T2"
+                style={{width:"100%",padding:"8px 10px",border:`1.5px solid ${BORDER}`,borderRadius:12,background:APP_BG,fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none",boxSizing:"border-box"}}/>
             </div>
-          ))}
-          <div style={{display:"flex",gap:10,marginTop:4}}>
-            <button onClick={()=>setShowFlightForm(false)} style={{flex:1,padding:"12px 0",borderRadius:16,border:`1.5px solid ${BORDER}`,color:TEXT_M,fontSize:14,background:"none",cursor:"pointer",fontFamily:"inherit"}}>取消</button>
-            <button onClick={saveFlight2} style={{flex:1,padding:"12px 0",borderRadius:16,background:pal.bg,color:"#fff",fontSize:14,fontWeight:600,border:"none",cursor:"pointer",fontFamily:"inherit"}}>{editFlight?"儲存修改":"加入航班"}</button>
+            <div style={{flex:1}}>
+              <label style={{fontSize:10,color:TEXT_L,display:"block",marginBottom:3,textTransform:"uppercase"}}>座位</label>
+              <input value={fSeat} onChange={e=>setFSeat(e.target.value)} placeholder="12A"
+                style={{width:"100%",padding:"8px 10px",border:`1.5px solid ${BORDER}`,borderRadius:12,background:APP_BG,fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none",boxSizing:"border-box"}}/>
+            </div>
+          </div>
+          {/* 備注 */}
+          <div>
+            <label style={{fontSize:10,color:TEXT_L,display:"block",marginBottom:3,textTransform:"uppercase"}}>備注</label>
+            <input value={fNote2} onChange={e=>setFNote2(e.target.value)} placeholder="線上報到截止 24 小時前"
+              style={{width:"100%",padding:"8px 10px",border:`1.5px solid ${BORDER}`,borderRadius:12,background:APP_BG,fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none",boxSizing:"border-box"}}/>
+          </div>
+          <div style={{display:"flex",gap:8,marginTop:4}}>
+            <button onClick={()=>setShowFlightForm(false)} style={{flex:1,padding:"11px 0",borderRadius:16,border:`1.5px solid ${BORDER}`,color:TEXT_M,fontSize:14,background:"none",cursor:"pointer",fontFamily:"inherit"}}>取消</button>
+            <button onClick={saveFlight2} style={{flex:1,padding:"11px 0",borderRadius:16,background:pal.bg,color:"#fff",fontSize:14,fontWeight:600,border:"none",cursor:"pointer",fontFamily:"inherit"}}>{editFlight?"儲存修改":"加入航班"}</button>
           </div>
         </div>
       </BottomSheet>
