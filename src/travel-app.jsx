@@ -3054,9 +3054,12 @@ function TransitBar({from,fromUrl,to,toUrl,pal}){
   };
 
   const geocode = async(name)=>{
+    // 清理地名：移除地圖連結、只保留文字
+    const clean = name.replace(/https?:\/\/\S+/g,'').trim();
+    if(!clean) return null;
     const r = await fetch(
-      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(name)}&format=json&limit=1`,
-      {headers:{"Accept-Language":"zh-TW,en","User-Agent":"travel-app"}}
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(clean)}&format=json&limit=1`,
+      {headers:{"Accept-Language":"ko,zh-TW,en","User-Agent":"travel-app"}}
     );
     const d = await r.json();
     if(!d.length) return null;
@@ -3102,13 +3105,12 @@ function TransitBar({from,fromUrl,to,toUrl,pal}){
 
   if(!from||!to||from==="未定地點"||to==="未定地點") return null;
 
+  const isKorean = (str)=> /[\uAC00-\uD7AF\u1100-\u11FF]/.test(str||"");
   const mapsUrl = (()=>{
-    // 判斷目的地連結是哪個地圖服務，用對應的導航格式
-    if(toUrl&&toUrl.includes("naver")){
-      // Naver Maps 導航：from 用地名，to 用地名（Naver 不支援直接帶外部座標導航）
-      return `https://map.naver.com/v5/directions/-/-/${encodeURIComponent(to)}/-/transit`;
+    if(isKorean(from)||isKorean(to)||(toUrl&&toUrl.includes("naver"))||(fromUrl&&fromUrl.includes("naver"))){
+      // 韓國地點用 Naver Maps 網頁版導航
+      return `https://map.naver.com/v5/directions/${encodeURIComponent(from)}/${encodeURIComponent(to)}/-/transit`;
     }
-    // 統一用 Google Maps 導航
     return `https://www.google.com/maps/dir/?api=1&origin=${encodeURIComponent(from)}&destination=${encodeURIComponent(to)}&travelmode=transit`;
   })();
 
@@ -3394,7 +3396,7 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
             <div style={{flex:1,minWidth:0}}>
               <label style={lbl}>地圖連結（選填）</label>
               <div style={{position:"relative"}}>
-                <input value={form.locationUrl} onChange={e=>sf("locationUrl")(e.target.value)} placeholder="maps.app.goo.gl/…"
+                <input value={form.locationUrl} onChange={e=>sf("locationUrl")(e.target.value)} placeholder="maps.app.goo.gl/… 或 map.naver.com/…"
                   style={{...inp,paddingRight:form.locationUrl?"38px":"14px",fontSize:16,borderColor:form.locationUrl?pal.bg:BORDER}}/>
                 {form.locationUrl&&(
                   <button onClick={()=>window.open(form.locationUrl.startsWith("http")?form.locationUrl:`https://${form.locationUrl}`,"_blank")}
