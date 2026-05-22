@@ -3035,41 +3035,70 @@ function TransitBar({from,fromUrl,to,toUrl,pal}){
   const [info,setInfo]=useState(null);
   const [loading,setLoading]=useState(false);
 
+  // 從 Google Maps / Naver Maps URL 萃取座標
+  const extractCoords = (url)=>{
+    if(!url) return null;
+    // Google Maps: @lat,lon
+    const m1 = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+    if(m1) return {lat:parseFloat(m1[1]),lon:parseFloat(m1[2])};
+    // Google Maps: q=lat,lon
+    const m2 = url.match(/[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/);
+    if(m2) return {lat:parseFloat(m2[1]),lon:parseFloat(m2[2])};
+    // Naver Maps: lat=N&lng=N 或 y=N&x=N
+    const m3 = url.match(/[?&]lat=(-?\d+\.\d+).*[?&]lng=(-?\d+\.\d+)/);
+    if(m3) return {lat:parseFloat(m3[1]),lon:parseFloat(m3[2])};
+    const m4 = url.match(/[?&]y=(-?\d+\.\d+).*[?&]x=(-?\d+\.\d+)/);
+    if(m4) return {lat:parseFloat(m4[1]),lon:parseFloat(m4[2])};
+    // Naver Maps: /place/ID 型式 → 無法直接取座標，返回 null
+    return null;
+  };
+
+  const geocode = async(name)=>{
+    const r = await fetch(
+      `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(name)}&format=json&limit=1`,
+      {headers:{"Accept-Language":"zh-TW,en","User-Agent":"travel-app"}}
+    );
+    const d = await r.json();
+    if(!d.length) return null;
+    return {lat:parseFloat(d[0].lat),lon:parseFloat(d[0].lon)};
+  };
+
+  const estimateByDist = (distKm)=>{
+    if(distKm===null) return {mode:"bus",duration:"約15分鐘"};
+    if(distKm<0.8)   return {mode:"walk",  duration:Math.round(distKm/0.08)+"分鐘"};
+    if(distKm<20)    return {mode:"metro", duration:Math.round(distKm*2.5+5)+"分鐘"};
+    if(distKm<100)   return {mode:"bus",   duration:Math.round(distKm*1.5+15)+"分鐘"};
+    return              {mode:"flight",duration:Math.round(distKm/10+60)+"分鐘"};
+  };
+
   useEffect(()=>{
     if(!from||!to||from==="未定地點"||to==="未定地點") return;
     setLoading(true);
-
-    // 用 Nominatim 地理編碼 + OSRM 路線計算（免費，不需要 key）
-    const geocode = async(name)=>{
-      const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(name)}&format=json&limit=1`,{headers:{"Accept-Language":"zh-TW,en"}});
-      const d = await r.json();
-      if(d.length===0) throw new Error("not found");
-      return {lat:parseFloat(d[0].lat),lon:parseFloat(d[0].lon)};
-    };
-
     (async()=>{
       try{
-        const [a,b] = await Promise.all([geocode(from), geocode(to)]);
-        // OSRM 步行距離（用來估算最短距離）
-        const res = await fetch(`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`);
+        // 優先用 URL 座標，否則 geocode
+        let a = extractCoords(fromUrl) || await geocode(from);
+        let b = extractCoords(toUrl)   || await geocode(to);
+
+        if(!a||!b){
+          // 至少一個找不到 → 用預設估算
+          setInfo(estimateByDist(null));
+          setLoading(false);
+          return;
+        }
+
+        const res = await fetch(
+          `https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`
+        );
         const data = await res.json();
-        const distKm = data.routes?.[0]?.distance / 1000 || 0;
-
-        // 根據距離估算交通方式和時間
-        let mode, mins;
-        if(distKm < 1){        mode="walk";  mins=Math.round(distKm/0.08);}
-        else if(distKm < 5){   mode="metro"; mins=Math.round(distKm*3+5);}
-        else if(distKm < 20){  mode="metro"; mins=Math.round(distKm*2+8);}
-        else if(distKm < 100){ mode="bus";   mins=Math.round(distKm*1.5+15);}
-        else{                  mode="flight"; mins=Math.round(distKm/10+60);}
-
-        setInfo({mode, duration: mins+"分鐘"});
+        const distKm = (data.routes?.[0]?.distance||0)/1000;
+        setInfo(estimateByDist(distKm));
       } catch {
-        setInfo({mode:"bus", duration:"—"});
+        setInfo(estimateByDist(null));
       }
       setLoading(false);
     })();
-  },[from,to]);
+  },[from,to,fromUrl,toUrl]);
 
   if(!from||!to||from==="未定地點"||to==="未定地點") return null;
 
