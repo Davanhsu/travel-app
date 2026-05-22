@@ -1008,7 +1008,7 @@ function BookmarkTab({ trip, onUpdate }){
               )}
               {/* 介紹 */}
               {item.note&&(
-                <div style={{fontSize:13,color:TEXT_M,lineHeight:1.8,marginBottom:14,padding:"10px 12px",background:APP_BG,borderRadius:12,borderLeft:`3px solid ${pal.bg}50`}}>{item.note}</div>
+                <div style={{fontSize:13,color:TEXT_M,lineHeight:1.8,marginBottom:14,padding:"10px 12px",background:APP_BG,borderRadius:12,borderLeft:`3px solid ${pal.bg}50`,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{item.note}</div>
               )}
               {/* 操作 */}
               <div style={{display:"flex",gap:10,marginTop:6}}>
