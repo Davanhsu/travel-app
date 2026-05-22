@@ -1345,33 +1345,31 @@ function HorizontalScroll({children, height}){
   useEffect(()=>{
     const el = ref.current;
     if(!el) return;
-    let startX=0, startY=0, decided=false, active=false;
+    let startX=0, startY=0, isHoriz=null;
     const onStart = e=>{
       startX=e.touches[0].clientX;
       startY=e.touches[0].clientY;
-      decided=false; active=true;
+      isHoriz=null;
     };
     const onMove = e=>{
-      if(!active) return;
-      const dx=Math.abs(e.touches[0].clientX-startX);
-      const dy=Math.abs(e.touches[0].clientY-startY);
-      if(!decided&&(dx>4||dy>4)){
-        decided=true;
-        if(dx>dy) e.preventDefault(); // 橫向滑動：攔截
-        else active=false;             // 垂直滑動：放行
-      } else if(decided&&active){
-        e.preventDefault();
+      if(isHoriz===null){
+        const dx=Math.abs(e.touches[0].clientX-startX);
+        const dy=Math.abs(e.touches[0].clientY-startY);
+        if(dx<4&&dy<4) return;
+        isHoriz = dx >= dy;
       }
+      // 只在確認是垂直滑動時阻止（讓水平滑動通過）
+      if(!isHoriz) e.preventDefault();
     };
-    el.addEventListener("touchstart",onStart,{passive:true});
-    el.addEventListener("touchmove",onMove,{passive:false});
+    el.addEventListener("touchstart", onStart, {passive:true});
+    el.addEventListener("touchmove",  onMove,  {passive:false});
     return()=>{
-      el.removeEventListener("touchstart",onStart);
-      el.removeEventListener("touchmove",onMove);
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove",  onMove);
     };
   },[]);
   return(
-    <div ref={ref} style={{display:"flex",height,overflowX:"auto",scrollSnapType:"x mandatory",scrollbarWidth:"none",WebkitOverflowScrolling:"touch",gap:0}}>
+    <div ref={ref} style={{display:"flex",height,overflowX:"scroll",overflowY:"hidden",scrollSnapType:"x mandatory",scrollbarWidth:"none",WebkitOverflowScrolling:"touch",touchAction:"pan-x"}}>
       {children}
     </div>
   );
