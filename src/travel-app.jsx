@@ -3303,27 +3303,282 @@ function TransitBar({from,fromUrl,to,toUrl,pal}){
 
 // ─── PDF 匯出頁面 ───
 function TripExportView({trip, pal, onClose}){
-  const flights  = trip.flights||[];
-  const expenses = trip.expenses||[];
-  const bookmarks= trip.bookmarks||[];
+  const flights   = trip.flights||[];
+  const expenses  = trip.expenses||[];
+  const bookmarks = trip.bookmarks||[];
+  const companions= trip.companions||[];
 
   const totalByCat = {};
   expenses.forEach(e=>{ totalByCat[e.cat]=(totalByCat[e.cat]||0)+parseFloat(e.amount||0); });
   const grandTotal = expenses.reduce((s,e)=>s+parseFloat(e.amount||0),0);
 
-  const FTYPE_LABEL = {depart:"去程",transit:"轉機",return:"回程"};
-  const SPOT_CATS_MAP = Object.fromEntries((typeof SPOT_CATS!=="undefined"?SPOT_CATS:[]).map(c=>[c.id,c.label]));
-
-  const handlePrint = ()=>{
-    setTimeout(()=>{
-      if(/Safari/.test(navigator.userAgent)&&!/Chrome/.test(navigator.userAgent)){
-        // Safari：提示使用者手動列印
-        alert("請使用瀏覽器選單「檔案 → 列印」或 ⌘+P 來儲存 PDF");
+  // 結算計算（同 WalletTab 邏輯）
+  const settlements = (()=>{
+    if(!companions.length) return [];
+    const balance={};
+    companions.forEach(c=>{balance[c.id]=0;});
+    expenses.forEach(ex=>{
+      if(!ex.paidBy||!ex.splitWith?.length) return;
+      if(!balance.hasOwnProperty(ex.paidBy)) return;
+      if(ex.splitMode==="custom"&&ex.customAmounts){
+        ex.splitWith.forEach(cid=>{
+          if(!balance.hasOwnProperty(cid)||cid===ex.paidBy) return;
+          const amt=ex.customAmounts[cid]||0;
+          balance[ex.paidBy]+=amt; balance[cid]-=amt;
+        });
       } else {
-        window.print();
+        const all=ex.splitWith.filter(id=>balance.hasOwnProperty(id));
+        if(!all.length) return;
+        const per=ex.amount/all.length;
+        all.filter(id=>id!==ex.paidBy).forEach(cid=>{
+          balance[ex.paidBy]+=per; balance[cid]-=per;
+        });
       }
-    }, 100);
+    });
+    const getName=id=>companions.find(c=>c.id===id)?.name||"?";
+    const C=companions.filter(c=>balance[c.id]>0.01).map(c=>({id:c.id,amt:balance[c.id]}));
+    const D=companions.filter(c=>balance[c.id]<-0.01).map(c=>({id:c.id,amt:-balance[c.id]}));
+    const txns=[]; let ci=0,di=0;
+    while(ci<C.length&&di<D.length){
+      const pay=Math.min(C[ci].amt,D[di].amt);
+      txns.push({from:getName(D[di].id),to:getName(C[ci].id),amount:pay});
+      C[ci].amt-=pay; D[di].amt-=pay;
+      if(C[ci].amt<0.01)ci++; if(D[di].amt<0.01)di++;
+    }
+    return txns;
+  })();
+
+  const FTYPE_LABEL={depart:"去程",transit:"轉機",return:"回程"};
+  const SPOT_CATS_MAP=Object.fromEntries(SPOT_CATS.map(c=>[c.id,c.label]));
+  const EXPENSE_CAT_LABEL=Object.fromEntries(EXPENSE_CATS.map(c=>[c.id,c.label]));
+
+  const handleSave=()=>{
+    const content=document.getElementById("export-content");
+    if(!content) return;
+    // 把目前頁面整個 HTML 包成獨立檔案下載
+    const html=`<!DOCTYPE html><html><head>
+      <meta charset="utf-8"/>
+      <meta name="viewport" content="width=device-width,initial-scale=1"/>
+      <title>${trip.name} 旅遊日記</title>
+      <style>
+        *{box-sizing:border-box;margin:0;padding:0;}
+        body{font-family:'Noto Serif TC',serif;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+        @media print{.no-print{display:none!important;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}}
+        @page{margin:10mm;}
+      </style>
+      <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;700&display=swap" rel="stylesheet"/>
+    </head><body>${content.innerHTML}</body></html>`;
+    const blob=new Blob([html],{type:"text/html;charset=utf-8"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=url; a.download=trip.name+"_旅遊日記.html";
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    setTimeout(()=>URL.revokeObjectURL(url),1000);
+    alert("已下載 HTML 檔案！\n用瀏覽器開啟後，選擇「列印」→「儲存為 PDF」即可。");
   };
+
+  const handlePrint=()=>{
+    setTimeout(()=>window.print(),100);
+  };
+
+  return(
+    <div style={{fontFamily:`'Noto Serif TC','PingFang TC',serif`,background:"#fff",minHeight:"100vh"}}>
+      <style>{`
+        @media print{
+          .no-print{display:none!important;}
+          body{margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+          .page-break{page-break-before:always;}
+          *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}
+          img{max-width:100%!important;}
+        }
+        @media screen{.export-wrap{max-width:700px;margin:0 auto;padding:0 0 80px;}}
+      `}</style>
+
+      {/* 操作列 */}
+      <div className="no-print" style={{position:"sticky",top:0,zIndex:99,background:"#fff",borderBottom:"1px solid #E8E4E0",padding:"12px 20px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+        <button onClick={onClose} style={{display:"flex",alignItems:"center",gap:5,background:"none",border:"none",cursor:"pointer",fontSize:13,color:"#6A6058",fontFamily:"inherit",flexShrink:0}}>
+          <Icon name="chevron-left" size={15} color="#6A6058"/> 返回
+        </button>
+        <div style={{fontSize:12,fontWeight:600,color:"#2E2824",textAlign:"center",flex:1}}>{trip.name}</div>
+        <div style={{display:"flex",gap:6,flexShrink:0}}>
+          <button onClick={handlePrint}
+            style={{padding:"7px 12px",borderRadius:10,background:APP_BG,border:`1px solid ${BORDER}`,cursor:"pointer",fontFamily:"inherit",fontSize:12,color:TEXT_M}}>
+            🖨️ 列印
+          </button>
+          <button onClick={handleSave}
+            style={{padding:"7px 12px",borderRadius:10,background:pal.bg,color:pal.fg,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:600}}>
+            ⬇️ 下載
+          </button>
+        </div>
+      </div>
+
+      <div className="export-wrap" id="export-content">
+
+        {/* ── 封面 ── */}
+        <div style={{position:"relative",height:320,background:pal.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",overflow:"hidden",WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}>
+          {trip.coverImage&&<img src={trip.coverImage} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>}
+          <div style={{position:"absolute",inset:0,background:`linear-gradient(180deg,${pal.bg}99 0%,${pal.bg}EE 100%)`,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}/>
+          <div style={{position:"relative",textAlign:"center",padding:"0 24px"}}>
+            <div style={{fontFamily:"Georgia,serif",fontSize:36,fontWeight:700,color:pal.fg,lineHeight:1.2,marginBottom:8}}>{trip.name}</div>
+            {trip.subtitle&&<div style={{fontSize:16,color:"rgba(255,255,255,.9)",marginBottom:12}}>{trip.subtitle}</div>}
+            <div style={{fontSize:13,color:"rgba(255,255,255,.85)",letterSpacing:"0.08em"}}>{trip.startDate} → {trip.endDate}</div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,.75)",marginTop:4}}>{trip.days?.length||0} 天 · {trip.days?.reduce((s,d)=>s+d.schedule.length,0)||0} 個行程</div>
+          </div>
+        </div>
+
+        {/* ── 航班 ── */}
+        {flights.length>0&&(
+          <div style={{padding:"28px 24px 0"}}>
+            <SectionTitle color={pal.bg}>航班資訊</SectionTitle>
+            {flights.map((f,i)=>(
+              <div key={i} style={{background:"#F8F7F5",borderRadius:14,padding:"14px 18px",marginBottom:10,borderLeft:`4px solid ${pal.bg}`,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    <span style={{background:pal.bg,color:pal.fg,fontSize:10,fontWeight:600,padding:"2px 8px",borderRadius:8,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}>{FTYPE_LABEL[f.type]||f.type}</span>
+                    <span style={{fontFamily:"Georgia,serif",fontSize:18,fontWeight:700,color:"#2E2824"}}>{f.code}</span>
+                  </div>
+                  <span style={{fontSize:13,color:"#6A6058"}}>{f.from} → {f.to}</span>
+                </div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:"4px 16px",fontSize:12,color:"#6A6058"}}>
+                  {f.depDate&&<span>出發：{f.depDate} {f.depTime}</span>}
+                  {f.arrDate&&<span>抵達：{f.arrDate} {f.arrTime}</span>}
+                  {f.terminal&&<span>航廈：{f.terminal}</span>}
+                  {f.seat&&<span>座位：{f.seat}</span>}
+                </div>
+                {f.note&&<div style={{fontSize:11,color:"#A09890",marginTop:5}}>{f.note}</div>}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── 每日行程 ── */}
+        {(trip.days||[]).map((day,di)=>(
+          <div key={di} style={{padding:"28px 24px 0"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+              <div style={{width:4,height:28,background:pal.bg,borderRadius:2,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}/>
+              <div>
+                <div style={{fontFamily:"Georgia,serif",fontSize:20,fontWeight:700,color:"#2E2824"}}>Day {day.dateNumber}</div>
+                <div style={{fontSize:11,color:"#A09890"}}>{day.fullDate} {day.weekDay}</div>
+              </div>
+            </div>
+            {day.schedule.length===0&&<div style={{fontSize:13,color:"#A09890",fontStyle:"italic",marginBottom:12}}>無行程安排</div>}
+            {day.schedule.map((ev,ei)=>(
+              <div key={ei} style={{marginBottom:16,paddingBottom:16,borderBottom:ei<day.schedule.length-1?"1px solid #EEE":"none"}}>
+                <div style={{display:"flex",gap:12}}>
+                  <div style={{width:48,flexShrink:0,textAlign:"right",paddingTop:2}}>
+                    <div style={{fontSize:11,fontWeight:700,color:pal.bg}}>{ev.time}</div>
+                    {ev.duration&&<div style={{fontSize:9,color:"#A09890",marginTop:1}}>{ev.duration}</div>}
+                  </div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:14,fontWeight:700,color:"#2E2824",marginBottom:3}}>{ev.title}</div>
+                    {ev.location&&ev.location!=="未定地點"&&(
+                      <div style={{fontSize:11,color:"#6A6058",marginBottom:5,display:"flex",alignItems:"center",gap:3}}>
+                        <svg width="10" height="10" viewBox="0 0 24 24" fill={pal.bg}><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+                        {ev.location}
+                      </div>
+                    )}
+                    {ev.content&&<div style={{fontSize:12,color:"#6A6058",lineHeight:1.7,whiteSpace:"pre-wrap",marginBottom:ev.images?.length?8:0}}>{ev.content}</div>}
+                    {ev.images&&ev.images.length>0&&(
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                        {ev.images.slice(0,5).map((src,ii)=>(
+                          <img key={ii} src={src} alt="" style={{width:80,height:80,objectFit:"cover",borderRadius:8}}/>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ))}
+
+        {/* ── 口袋名單 ── */}
+        {bookmarks.length>0&&(
+          <div style={{padding:"28px 24px 0"}}>
+            <SectionTitle color={pal.bg}>口袋名單</SectionTitle>
+            {bookmarks.map((b,bi)=>(
+              <div key={bi} style={{marginBottom:14,paddingBottom:14,borderBottom:bi<bookmarks.length-1?"1px solid #EEE":"none"}}>
+                <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                  {b.images&&b.images[0]&&(
+                    <img src={b.images[0]} alt="" style={{width:68,height:68,objectFit:"cover",borderRadius:10,flexShrink:0}}/>
+                  )}
+                  <div style={{flex:1}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
+                      <span style={{fontSize:14,fontWeight:700,color:"#2E2824"}}>{b.name}</span>
+                      <span style={{fontSize:9,color:pal.bg,background:pal.bg+"20",padding:"2px 7px",borderRadius:6,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}>{SPOT_CATS_MAP[b.cat]||b.cat}</span>
+                    </div>
+                    {b.addr&&<div style={{fontSize:11,color:"#6A6058",marginBottom:3}}>{b.addr}</div>}
+                    {b.note&&<div style={{fontSize:11,color:"#6A6058",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{b.note}</div>}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── 記帳總結 ── */}
+        {expenses.length>0&&(
+          <div style={{padding:"28px 24px 0"}}>
+            <SectionTitle color={pal.bg}>記帳總結</SectionTitle>
+            {/* 總花費 */}
+            <div style={{background:"#F8F7F5",borderRadius:16,padding:"18px 24px",marginBottom:16,textAlign:"center",WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}>
+              <div style={{fontSize:11,color:"#A09890",marginBottom:4}}>總花費</div>
+              <div style={{fontFamily:"Georgia,serif",fontSize:30,fontWeight:700,color:pal.bg}}>{trip.currency} {grandTotal.toLocaleString()}</div>
+              <div style={{fontSize:11,color:"#A09890",marginTop:3}}>{expenses.length} 筆消費</div>
+            </div>
+            {/* 各類別 */}
+            <div style={{marginBottom:20}}>
+              {Object.entries(totalByCat).sort((a,b)=>b[1]-a[1]).map(([cat,amt])=>{
+                const pct=grandTotal>0?Math.round(amt/grandTotal*100):0;
+                return(
+                  <div key={cat} style={{marginBottom:8}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
+                      <span style={{fontSize:12,color:"#2E2824"}}>{EXPENSE_CAT_LABEL[cat]||cat}</span>
+                      <span style={{fontSize:12,fontWeight:600,color:"#2E2824"}}>{trip.currency} {amt.toLocaleString()} <span style={{fontSize:10,color:"#A09890"}}>({pct}%)</span></span>
+                    </div>
+                    <div style={{height:5,background:"#EEE",borderRadius:3,overflow:"hidden",WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}>
+                      <div style={{height:"100%",width:pct+"%",background:pal.bg,borderRadius:3,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}/>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {/* 旅伴分攤 */}
+            {settlements.length>0&&(
+              <div>
+                <div style={{fontSize:12,color:"#A09890",marginBottom:10,letterSpacing:"0.06em",textTransform:"uppercase"}}>旅伴分攤結果</div>
+                {settlements.map((s,i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",background:"#F8F7F5",borderRadius:12,marginBottom:8,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}>
+                    <span style={{fontSize:13,fontWeight:600,color:"#2E2824"}}>{s.from}</span>
+                    <span style={{fontSize:11,color:"#A09890"}}>應付給</span>
+                    <span style={{fontSize:13,fontWeight:600,color:"#2E2824"}}>{s.to}</span>
+                    <span style={{marginLeft:"auto",fontSize:14,fontWeight:700,color:pal.bg}}>{trip.currency} {Math.round(s.amount).toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {companions.length>0&&settlements.length===0&&(
+              <div style={{fontSize:12,color:"#A09890",textAlign:"center",padding:"12px 0"}}>所有費用已結清 ✓</div>
+            )}
+          </div>
+        )}
+
+        <div style={{height:32}}/>
+        <div style={{textAlign:"center",fontSize:10,color:"#C8C0B8",paddingBottom:24}}>Generated by My Travel Journal</div>
+      </div>
+    </div>
+  );
+}
+
+function SectionTitle({children, color}){
+  return(
+    <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+      <div style={{width:4,height:24,background:color,borderRadius:2,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}/>
+      <div style={{fontFamily:"Georgia,serif",fontSize:20,fontWeight:700,color:"#2E2824"}}>{children}</div>
+    </div>
+  );
+}
 
   return(
     <div style={{fontFamily:`'Noto Serif TC','PingFang TC',serif`,background:"#fff",minHeight:"100vh"}}>
