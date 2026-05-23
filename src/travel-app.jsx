@@ -2,9 +2,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 
 // ─── Firebase ───
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import { initializeApp } from "firebase/app";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
+import { getFirestore, doc, getDoc, setDoc, collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, getDocs, enableIndexedDbPersistence } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAdHjcnI678F2XvpLcNNMpbDBRR8bkLYY0",
@@ -3046,41 +3046,50 @@ function TripFormSheet({show,onClose,onSave,initialData}){
         </div>
       </div>
     </BottomSheet>
-  );}
-
-  if (!show) return null;
-
-  return (
-    <BottomSheet show={show} onClose={onClose} title={isEdit ? "編輯旅程資訊" : "新增旅遊地點"}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-        <Field label="旅遊地點名稱 *" value={name} onChange={setName} placeholder="例如：Tokyo、Paris、Bali" />
-        <Field label="副標題" value={subtitle} onChange={setSubtitle} placeholder="例如：日本東京 5 日遊" />
-        <div style={{ display: "flex", gap: 12 }}>
-          <div style={{ flex: 1 }}>
-            <label style={{ fontSize: 11, color: TEXT_L, display: "block", marginBottom: 5, letterSpacing: "0.07em", textTransform: "uppercase" }}>出發日期 *</label>
-            <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
-              style={{ width: "100%", padding: "11px 14px", border: `1.5px solid ${BORDER}`, borderRadius: 14, background: APP_BG, fontFamily: "inherit", fontSize: 14, color: startDate ? TEXT_D : TEXT_L, outline: "none", boxSizing: "border-box", height: 46, appearance: "none", WebkitAppearance: "none" }} />
+  );
+}
+  if(!show) return null;
+  return(
+    <BottomSheet show={show} onClose={onClose} title={isEdit?"編輯旅程資訊":"新增旅遊地點"}>
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        <Field label="旅遊地點名稱 *" value={name} onChange={setName} placeholder="例如：Tokyo、Paris、Bali"/>
+        <Field label="副標題" value={subtitle} onChange={setSubtitle} placeholder="例如：日本東京 5 日遊"/>
+        <div style={{display:"flex",gap:12}}>
+          <div style={{flex:1}}>
+            <label style={{fontSize:11,color:TEXT_L,display:"block",marginBottom:5,letterSpacing:"0.07em",textTransform:"uppercase"}}>出發日期 *</label>
+            <input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)}
+              style={{width:"100%",padding:"11px 14px",border:`1.5px solid ${BORDER}`,borderRadius:14,background:APP_BG,fontFamily:"inherit",fontSize:14,color:startDate?TEXT_D:TEXT_L,outline:"none",boxSizing:"border-box",height:46,appearance:"none",WebkitAppearance:"none"}}/>
           </div>
-          <div style={{ flex: 1 }}>
-            <label style={{ fontSize: 11, color: TEXT_L, display: "block", marginBottom: 5, letterSpacing: "0.07em", textTransform: "uppercase" }}>回程日期 *</label>
-            <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
-              style={{ width: "100%", padding: "11px 14px", border: `1.5px solid ${BORDER}`, borderRadius: 14, background: APP_BG, fontFamily: "inherit", fontSize: 14, color: endDate ? TEXT_D : TEXT_L, outline: "none", boxSizing: "border-box", height: 46, appearance: "none", WebkitAppearance: "none" }} />
+          <div style={{flex:1}}>
+            <label style={{fontSize:11,color:TEXT_L,display:"block",marginBottom:5,letterSpacing:"0.07em",textTransform:"uppercase"}}>回程日期 *</label>
+            <input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)}
+              style={{width:"100%",padding:"11px 14px",border:`1.5px solid ${BORDER}`,borderRadius:14,background:APP_BG,fontFamily:"inherit",fontSize:14,color:endDate?TEXT_D:TEXT_L,outline:"none",boxSizing:"border-box",height:46,appearance:"none",WebkitAppearance:"none"}}/>
           </div>
         </div>
         <div>
-          <label style={{ fontSize: 11, color: TEXT_L, display: "block", marginBottom: 8, letterSpacing: "0.07em", textTransform: "uppercase" }}>主要幣別</label>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {CURRENCIES.map(c => (
-              <button key={c.code} onClick={() => setCurrency(c.code)}
-                style={{ padding: "7px 14px", borderRadius: 20, background: currency === c.code ? "#5E6870" : APP_BG, border: `1.5px solid ${currency === c.code ? "#5E6870" : BORDER}`, color: currency === c.code ? "#fff" : TEXT_M, fontSize: 12, cursor: "pointer", fontFamily: "inherit", transition: "all .15s" }}>
+          <label style={{fontSize:11,color:TEXT_L,display:"block",marginBottom:8,letterSpacing:"0.07em",textTransform:"uppercase"}}>主要幣別</label>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            {CURRENCIES.map(c=>(
+              <button key={c.code} onClick={()=>setCurrency(c.code)}
+                style={{padding:"7px 14px",borderRadius:20,background:currency===c.code?"#5E6870":APP_BG,border:`1.5px solid ${currency===c.code?"#5E6870":BORDER}`,color:currency===c.code?"#fff":TEXT_M,fontSize:12,cursor:"pointer",fontFamily:"inherit",transition:"all .15s"}}>
                 {c.symbol} {c.name}
               </button>
             ))}
           </div>
         </div>
+        <PalettePicker value={paletteIdx} onChange={setPaletteIdx}/>
+        <CoverImagePicker value={coverImage} onChange={setCoverImage}/>
+        {err&&<div style={{fontSize:12,color:"#B04A38",padding:"8px 12px",background:"#F8EEEC",borderRadius:10}}>{err}</div>}
+        <div style={{display:"flex",gap:12,marginTop:6}}>
+          <button onClick={onClose} style={{flex:1,padding:"13px 0",borderRadius:16,border:`1.5px solid ${BORDER}`,color:TEXT_M,fontSize:14,background:"none",cursor:"pointer",fontFamily:"inherit"}}>取消</button>
+          <button onClick={handleSave} style={{flex:1,padding:"13px 0",borderRadius:16,background:PALETTE[paletteIdx]?.bg||"#5E6870",color:"#fff",fontSize:14,fontWeight:600,border:"none",cursor:"pointer",fontFamily:"inherit"}}>
+            {isEdit?"儲存修改":"建立旅程"}
+          </button>
+        </div>
       </div>
     </BottomSheet>
   );
+}
 
 // ─────────────────────────────────────────────────────────────
 // TripListPage
@@ -3903,7 +3912,6 @@ export default function App(){
             user={user} onSignOut={()=>signOut(fbAuth)}
             onJoinTrip={async(code)=>{
               try{
-                const {getDocs}=await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
                 const q=query(collection(fbDb,"trips"),where("inviteCode","==",code.trim().toUpperCase()));
                 const snap=await getDocs(q);
                 if(snap.empty) return "找不到此邀請碼，請確認後再試";
