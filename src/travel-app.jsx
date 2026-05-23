@@ -3089,7 +3089,7 @@ function TripFormSheet({show,onClose,onSave,initialData}){
 // ─────────────────────────────────────────────────────────────
 // TripListPage
 // ─────────────────────────────────────────────────────────────
-function TripListPage({trips,prefs,onSelect,onAdd,onDelete,onEditTrip,onUpdatePrefs,onReorder,user,onSignOut,onJoinTrip}){
+function TripListPage({trips,prefs,onSelect,onAdd,onDelete,onEditTrip,onUpdatePrefs,onReorder,user,onSignOut,onJoinTrip,onExport}){
   const [showInviteConfirm,setShowInviteConfirm]=useState(null);
   const [showJoin,setShowJoin]=useState(false);
   const [joinCode,setJoinCode]=useState("");
@@ -3194,6 +3194,15 @@ function TripListPage({trips,prefs,onSelect,onAdd,onDelete,onEditTrip,onUpdatePr
               <div style={{background:CARD_BG,display:"flex",alignItems:"center",padding:"10px 14px"}}>
                 <button onClick={()=>onSelect(trip.id)} style={{flex:1,display:"flex",alignItems:"center",gap:6,color:TEXT_D,fontSize:13,fontWeight:600,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}}>
                   <Icon name="arrow-right" size={15} color={pal.bg}/> 查看行程
+                </button>
+                {/* 匯出 PDF 按鈕 */}
+                <button onClick={e=>{e.stopPropagation();onExport&&onExport(trip.id);}}
+                  title="匯出旅遊日記"
+                  style={{width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",borderRadius:10,background:APP_BG,border:"none",cursor:"pointer",marginRight:4}}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={TEXT_M} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                    <path d="M14 2v6h6M12 18v-6M9 15l3 3 3-3"/>
+                  </svg>
                 </button>
                 <div {...gripProps} onClick={e=>e.stopPropagation()} style={{...(gripProps?.style),width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",marginRight:4,borderRadius:10,background:isActive?`${pal.bg}20`:APP_BG}}>
                   <Icon name="grip" size={18} color={isActive?pal.bg:BORDER}/>
@@ -3404,7 +3413,7 @@ function TripExportView({trip, pal, onClose}){
           *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}
           img{max-width:100%!important;}
         }
-        @media screen{.export-wrap{max-width:700px;margin:0 auto;padding:0 0 80px;}}
+        @media screen{.export-wrap{max-width:960px;margin:0 auto;padding:0 0 80px;}} @media print{@page{margin:8mm;size:A4;}}
       `}</style>
 
       {/* 操作列 */}
@@ -3415,12 +3424,25 @@ function TripExportView({trip, pal, onClose}){
         <div style={{fontSize:12,fontWeight:600,color:"#2E2824",textAlign:"center",flex:1}}>{trip.name}</div>
         <div style={{display:"flex",gap:6,flexShrink:0}}>
           <button onClick={handlePrint}
-            style={{padding:"7px 12px",borderRadius:10,background:APP_BG,border:`1px solid ${BORDER}`,cursor:"pointer",fontFamily:"inherit",fontSize:12,color:TEXT_M}}>
-            🖨️ 列印/PDF
+            style={{display:"flex",alignItems:"center",gap:6,padding:"8px 14px",borderRadius:12,background:APP_BG,border:`1.5px solid ${BORDER}`,cursor:"pointer",fontFamily:"inherit",fontSize:12,color:TEXT_M}}>
+            {/* 列印插畫 icon */}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="6" y="2" width="12" height="8" rx="1.5" stroke={TEXT_M} fill={BORDER+"60"}/>
+              <rect x="4" y="8" width="16" height="10" rx="2" stroke={TEXT_M} fill={APP_BG}/>
+              <rect x="7" y="15" width="10" height="7" rx="1" stroke={TEXT_M} fill={BORDER+"40"}/>
+              <circle cx="17" cy="12" r="1.2" fill={TEXT_M}/>
+            </svg>
+            列印 / PDF
           </button>
           <button onClick={handleSave}
-            style={{padding:"7px 12px",borderRadius:10,background:pal.bg,color:pal.fg,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:600}}>
-            {/iPad|iPhone|iPod/.test(typeof navigator!=="undefined"?navigator.userAgent:"")?"📤 開啟預覽":"⬇️ 下載"}
+            style={{display:"flex",alignItems:"center",gap:6,padding:"8px 14px",borderRadius:12,background:pal.bg,color:pal.fg,border:"none",cursor:"pointer",fontFamily:"inherit",fontSize:12,fontWeight:600}}>
+            {/* 下載插畫 icon */}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" stroke={pal.fg}>
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" fill="rgba(255,255,255,.25)" stroke={pal.fg}/>
+              <path d="M14 2v6h6"/>
+              <path d="M12 11v6M9 14l3 3 3-3"/>
+            </svg>
+            {/iPad|iPhone|iPod/.test(typeof navigator!=="undefined"?navigator.userAgent:"")?"開啟預覽":"下載"}
           </button>
         </div>
       </div>
@@ -3428,11 +3450,11 @@ function TripExportView({trip, pal, onClose}){
       <div className="export-wrap" id="export-content">
 
         {/* ── 封面 ── */}
-        <div style={{position:"relative",height:320,background:pal.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",overflow:"hidden",WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}>
+        <div style={{position:"relative",height:440,background:pal.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",overflow:"hidden",WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}>
           {trip.coverImage&&<img src={trip.coverImage} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>}
           <div style={{position:"absolute",inset:0,background:`linear-gradient(180deg,${pal.bg}99 0%,${pal.bg}EE 100%)`,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}/>
           <div style={{position:"relative",textAlign:"center",padding:"0 24px"}}>
-            <div style={{fontFamily:"Georgia,serif",fontSize:36,fontWeight:700,color:pal.fg,lineHeight:1.2,marginBottom:8}}>{trip.name}</div>
+            <div style={{fontFamily:"Georgia,serif",fontSize:48,fontWeight:700,color:pal.fg,lineHeight:1.2,marginBottom:10}}>{trip.name}</div>
             {trip.subtitle&&<div style={{fontSize:16,color:"rgba(255,255,255,.9)",marginBottom:12}}>{trip.subtitle}</div>}
             <div style={{fontSize:13,color:"rgba(255,255,255,.85)",letterSpacing:"0.08em"}}>{trip.startDate} → {trip.endDate}</div>
             <div style={{fontSize:12,color:"rgba(255,255,255,.75)",marginTop:4}}>{trip.days?.length||0} 天 · {trip.days?.reduce((s,d)=>s+d.schedule.length,0)||0} 個行程</div>
@@ -3441,7 +3463,7 @@ function TripExportView({trip, pal, onClose}){
 
         {/* ── 航班 ── */}
         {flights.length>0&&(
-          <div style={{padding:"28px 24px 0"}}>
+          <div style={{padding:"36px 32px 0"}}>
             <SectionTitle color={pal.bg}>航班資訊</SectionTitle>
             {flights.map((f,i)=>(
               <div key={i} style={{background:"#F8F7F5",borderRadius:14,padding:"14px 18px",marginBottom:10,borderLeft:`4px solid ${pal.bg}`,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}>
@@ -3466,7 +3488,7 @@ function TripExportView({trip, pal, onClose}){
 
         {/* ── 每日行程 ── */}
         {(trip.days||[]).map((day,di)=>(
-          <div key={di} style={{padding:"28px 24px 0"}}>
+          <div key={di} style={{padding:"36px 32px 0"}}>
             <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
               <div style={{width:4,height:28,background:pal.bg,borderRadius:2,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}/>
               <div>
@@ -3494,7 +3516,7 @@ function TripExportView({trip, pal, onClose}){
                     {ev.images&&ev.images.length>0&&(
                       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                         {ev.images.slice(0,5).map((src,ii)=>(
-                          <img key={ii} src={src} alt="" style={{width:80,height:80,objectFit:"cover",borderRadius:8}}/>
+                          <img key={ii} src={src} alt="" style={{width:140,height:140,objectFit:"cover",borderRadius:10}}/>
                         ))}
                       </div>
                     )}
@@ -3507,13 +3529,13 @@ function TripExportView({trip, pal, onClose}){
 
         {/* ── 口袋名單 ── */}
         {bookmarks.length>0&&(
-          <div style={{padding:"28px 24px 0"}}>
+          <div style={{padding:"36px 32px 0"}}>
             <SectionTitle color={pal.bg}>口袋名單</SectionTitle>
             {bookmarks.map((b,bi)=>(
               <div key={bi} style={{marginBottom:14,paddingBottom:14,borderBottom:bi<bookmarks.length-1?"1px solid #EEE":"none"}}>
                 <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
                   {b.images&&b.images[0]&&(
-                    <img src={b.images[0]} alt="" style={{width:68,height:68,objectFit:"cover",borderRadius:10,flexShrink:0}}/>
+                    <img src={b.images[0]} alt="" style={{width:110,height:110,objectFit:"cover",borderRadius:12,flexShrink:0}}/>
                   )}
                   <div style={{flex:1}}>
                     <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
@@ -3531,7 +3553,7 @@ function TripExportView({trip, pal, onClose}){
 
         {/* ── 記帳總結 ── */}
         {expenses.length>0&&(
-          <div style={{padding:"28px 24px 0"}}>
+          <div style={{padding:"36px 32px 0"}}>
             <SectionTitle color={pal.bg}>記帳總結</SectionTitle>
             {/* 總花費 */}
             <div style={{background:"#F8F7F5",borderRadius:16,padding:"18px 24px",marginBottom:16,textAlign:"center",WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}>
@@ -3625,14 +3647,14 @@ function InviteCodeButton({code}){
   );
 }
 
-function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect,onAdd,onDelete,onEditTrip,listData,onUpdateListData,user}){
+function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect,onAdd,onDelete,onEditTrip,listData,onUpdateListData,user,initialExport,onExportClose}){
   const pal=PALETTE[trip.paletteIdx??0];
   const [dayIdx,setDayIdx]=useState(0),[showAdd,setShowAdd]=useState(false);
   const [editIdx,setEditIdx]=useState(null),[form,setForm]=useState({title:"",time:"09:00",duration:"1 小時",location:"",locationUrl:"",content:"",images:[]});
   const [activeTab,setActiveTab]=useState("calendar");
   const [delTarget,setDelTarget]=useState(null);
   const [showFlightPanel,setShowFlightPanel]=useState(false);
-  const [showExport,setShowExport]=useState(false);
+  const [showExport,setShowExport]=useState(!!initialExport);
   const [showLeaveConfirm,setShowLeaveConfirm]=useState(false);
   const [memberProfiles,setMemberProfiles]=useState([]); // [{uid,displayName,photoURL}]
 
@@ -3953,7 +3975,7 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
     );
   }
 
-  if(showExport) return <TripExportView trip={trip} pal={pal} onClose={()=>setShowExport(false)}/>;
+  if(showExport) return <TripExportView trip={trip} pal={pal} onClose={()=>{ setShowExport(false); onExportClose&&onExportClose(); }}/>;
 
   return(
     <div style={{
@@ -3978,13 +4000,6 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
             </div>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
-            {/* 匯出 PDF */}
-            <button onClick={()=>setShowExport(true)}
-              style={{display:"flex",alignItems:"center",justifyContent:"center",width:32,height:32,background:"rgba(255,255,255,.18)",border:"none",borderRadius:10,cursor:"pointer"}}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,.9)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
-              </svg>
-            </button>
             {/* 成員頭像（共享旅程）*/}
             {trip.type==="shared"&&memberProfiles.length>0&&(
               <div style={{display:"flex",alignItems:"center"}}>
@@ -4274,6 +4289,7 @@ function AppInner(){
   const [prefs,   setPrefs]   = useState({...DEFAULT_PREFS});
   const [listData,setListData]= useState({});
   const [currentId,setCurrentId]= useState(null);
+  const [exportId, setExportId] = useState(null);
   const [syncing, setSyncing] = useState(false);
 
   // 防止 iOS input focus 時頁面放大
@@ -4397,17 +4413,19 @@ function AppInner(){
             trips={trips} prefs={prefs} onUpdatePrefs={setPrefs}
             onSelect={setCurrentId} onAdd={handleAdd} onDelete={handleDelete} onEditTrip={handleEdit}
             listData={listData} onUpdateListData={setListData}
-            user={user}/>
+            user={user}
+            initialExport={exportId===cur?.id}
+            onExportClose={()=>setExportId(null)}/>
         :<TripListPage trips={trips} prefs={prefs} onSelect={setCurrentId} onAdd={handleAdd}
             onDelete={handleDelete} onEditTrip={handleEdit} onUpdatePrefs={setPrefs}
             onReorder={newOrder=>{
-              // 更新排序：逐一更新 Firestore（順序存在各自 trip 的 sortOrder 欄位）
               newOrder.forEach((t,i)=>{
                 if(t._docId) updateDoc(doc(fbDb,"trips",t._docId),{sortOrder:i}).catch(()=>{});
               });
               setTrips(newOrder);
             }}
             user={user} onSignOut={()=>signOut(fbAuth)}
+            onExport={id=>{ setCurrentId(id); setTimeout(()=>setExportId(id),50); }}
             onJoinTrip={async(code)=>{
               try{
                 const q=query(collection(fbDb,"trips"),where("inviteCode","==",code.trim().toUpperCase()));
