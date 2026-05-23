@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 
 // ─── Firebase ───
 import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "firebase/auth";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from "firebase/auth";
 import { getFirestore, doc, getDoc, setDoc, collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, getDocs, enableIndexedDbPersistence } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -3728,15 +3728,35 @@ const STORAGE_KEY="TRAVEL_APP_V8_TRIPS", PREFS_KEY="TRAVEL_APP_V8_PREFS", LIST_K
 function LoginPage(){
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState(null);
+
+  // 處理 redirect 登入回調
+  useEffect(()=>{
+    setLoading(true);
+    getRedirectResult(fbAuth)
+      .then(result=>{ if(!result) setLoading(false); })
+      .catch(()=>setLoading(false));
+  },[]);
+
   const signIn = async()=>{
     setLoading(true); setError(null);
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({prompt:"select_account"});
     try{
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({prompt:"select_account"});
+      // 先試 popup
       await signInWithPopup(fbAuth, provider);
     } catch(e){
-      setError("登入失敗，請再試一次");
-      setLoading(false);
+      // popup 失敗（iOS Safari / 隱私模式）→ 改用 redirect
+      if(e.code==="auth/popup-blocked"||e.code==="auth/popup-closed-by-user"||e.code==="auth/cancelled-popup-request"||e.message?.includes("sessionStorage")){
+        try{
+          await signInWithRedirect(fbAuth, provider);
+        } catch(e2){
+          setError("登入失敗，請再試一次");
+          setLoading(false);
+        }
+      } else {
+        setError("登入失敗，請再試一次");
+        setLoading(false);
+      }
     }
   };
   return(
