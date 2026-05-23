@@ -767,7 +767,7 @@ function FlightPanel({ trip, onUpdate, pal, show, onClose }){
                 {(f.terminal||f.seat||f.note)&&(
                   <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:8}}>
                     {f.terminal&&<span style={{fontSize:11,background:APP_BG,color:TEXT_M,padding:"3px 9px",borderRadius:10,border:`1px solid ${BORDER}`}}>航廈 {f.terminal}</span>}
-                    {f.seat&&<span style={{fontSize:11,background:APP_BG,color:TEXT_M,padding:"3px 9px",borderRadius:10,border:`1px solid ${BORDER}`}}>座位 {f.seat}</span>}
+                    {f.seat&&<span style={{fontSize:11,background:APP_BG,color:TEXT_M,padding:"3px 9px",borderRadius:10,border:`1px solid ${BORDER}`}}>{f.seat}</span>}
                     {f.note&&<span style={{fontSize:11,color:TEXT_M,fontStyle:"italic"}}>{f.note}</span>}
                   </div>
                 )}
@@ -814,8 +814,7 @@ function FlightPanel({ trip, onUpdate, pal, show, onClose }){
           </div>
           <div style={{display:"flex",gap:8}}>
             <div style={{flex:1}}><label style={{fontSize:10,color:TEXT_L,display:"block",marginBottom:4,textTransform:"uppercase"}}>航廈</label><input value={fTerminal} onChange={e=>setFTerminal(e.target.value)} placeholder="T2" style={{width:"100%",padding:"9px 10px",border:`1.5px solid ${BORDER}`,borderRadius:12,background:APP_BG,fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none"}}/></div>
-            <div style={{flex:1}}><label style={{fontSize:10,color:TEXT_L,display:"block",marginBottom:4,textTransform:"uppercase"}}>座位</label><input value={fSeat} onChange={e=>setFSeat(e.target.value)} placeholder="32A" style={{width:"100%",padding:"9px 10px",border:`1.5px solid ${BORDER}`,borderRadius:12,background:APP_BG,fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none"}}/></div>
-            <div style={{flex:"0 0 44%"}}><label style={{fontSize:10,color:TEXT_L,display:"block",marginBottom:4,textTransform:"uppercase"}}>備註</label><input value={fNote} onChange={e=>setFNote(e.target.value)} placeholder="行李額度…" style={{width:"100%",padding:"9px 10px",border:`1.5px solid ${BORDER}`,borderRadius:12,background:APP_BG,fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none"}}/></div>
+            <div style={{flex:2}}><label style={{fontSize:10,color:TEXT_L,display:"block",marginBottom:4,textTransform:"uppercase"}}>備註</label><input value={fSeat} onChange={e=>setFSeat(e.target.value)} placeholder="座位 32A、行李額度 23kg…" style={{width:"100%",padding:"9px 10px",border:`1.5px solid ${BORDER}`,borderRadius:12,background:APP_BG,fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none"}}/></div>
           </div>
           <div style={{display:"flex",gap:10,marginTop:2}}>
             <button onClick={()=>setShowForm(false)} style={{flex:1,padding:"12px 0",borderRadius:16,border:`1.5px solid ${BORDER}`,color:TEXT_M,fontSize:14,background:"none",cursor:"pointer",fontFamily:"inherit"}}>取消</button>
@@ -1683,7 +1682,7 @@ function TripListTab({trip, onUpdate, pal, listData={}, onUpdateListData}){
                 </div>
                 {(f.terminal||f.seat)&&<div style={{display:"flex",gap:5,marginTop:6}}>
                   {f.terminal&&<span style={{fontSize:9,background:APP_BG,color:TEXT_M,padding:"2px 6px",borderRadius:8,border:`1px solid ${BORDER}`}}>航廈 {f.terminal}</span>}
-                  {f.seat&&<span style={{fontSize:9,background:APP_BG,color:TEXT_M,padding:"2px 6px",borderRadius:8,border:`1px solid ${BORDER}`}}>座位 {f.seat}</span>}
+                  {f.seat&&<span style={{fontSize:9,background:APP_BG,color:TEXT_M,padding:"2px 6px",borderRadius:8,border:`1px solid ${BORDER}`}}>{f.seat}</span>}
                 </div>}
               </div>
             </SwipeDelete>
@@ -1964,24 +1963,18 @@ function TripListTab({trip, onUpdate, pal, listData={}, onUpdateListData}){
               <MiniTimePicker value={fArrTime} onChange={setFArrTime}/>
             </div>
           </div>
-          {/* 航廈 + 座位 並排（縮小） */}
+          {/* 航廈 + 備註 並排 */}
           <div style={{display:"flex",gap:6}}>
-            <div style={{flex:1}}>
+            <div style={{flex:"0 0 30%"}}>
               <label style={{fontSize:10,color:TEXT_L,display:"block",marginBottom:3,textTransform:"uppercase"}}>航廈</label>
               <input value={fTerminal} onChange={e=>setFTerminal(e.target.value)} placeholder="T2"
                 style={{width:"100%",padding:"8px 10px",border:`1.5px solid ${BORDER}`,borderRadius:12,background:APP_BG,fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none",boxSizing:"border-box"}}/>
             </div>
             <div style={{flex:1}}>
-              <label style={{fontSize:10,color:TEXT_L,display:"block",marginBottom:3,textTransform:"uppercase"}}>座位</label>
-              <input value={fSeat} onChange={e=>setFSeat(e.target.value)} placeholder="12A"
+              <label style={{fontSize:10,color:TEXT_L,display:"block",marginBottom:3,textTransform:"uppercase"}}>備註</label>
+              <input value={fSeat} onChange={e=>setFSeat(e.target.value)} placeholder="座位 12A、行李 23kg…"
                 style={{width:"100%",padding:"8px 10px",border:`1.5px solid ${BORDER}`,borderRadius:12,background:APP_BG,fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none",boxSizing:"border-box"}}/>
             </div>
-          </div>
-          {/* 備注 */}
-          <div>
-            <label style={{fontSize:10,color:TEXT_L,display:"block",marginBottom:3,textTransform:"uppercase"}}>備注</label>
-            <input value={fNote2} onChange={e=>setFNote2(e.target.value)} placeholder="線上報到截止 24 小時前"
-              style={{width:"100%",padding:"8px 10px",border:`1.5px solid ${BORDER}`,borderRadius:12,background:APP_BG,fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none",boxSizing:"border-box"}}/>
           </div>
           <div style={{display:"flex",gap:8,marginTop:4}}>
             <button onClick={()=>setShowFlightForm(false)} style={{flex:1,padding:"11px 0",borderRadius:16,border:`1.5px solid ${BORDER}`,color:TEXT_M,fontSize:14,background:"none",cursor:"pointer",fontFamily:"inherit"}}>取消</button>
@@ -3763,8 +3756,8 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
                       <span style={{fontFamily:"Georgia,serif",fontSize:12,color:pal.bg,fontWeight:700}}>{ev.time}</span>
                       <span style={{fontSize:10,background:APP_BG,color:TEXT_L,padding:"2px 7px",borderRadius:20,border:`1px solid ${BORDER}`}}>{ev.duration}</span>
                     </div>
-                    <div style={{fontSize:13,fontWeight:500,color:TEXT_D,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ev.title}</div>
-                    {ev.content&&<div style={{fontSize:11,color:TEXT_L,marginTop:2,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{ev.content}</div>}
+                    <div style={{fontSize:15,fontWeight:500,color:TEXT_D,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{ev.title}</div>
+                    {ev.content&&<div style={{fontSize:13,color:TEXT_L,marginTop:2,lineHeight:1.6,whiteSpace:"pre-wrap",wordBreak:"break-word"}}>{ev.content}</div>}
                     {ev.images&&ev.images.length>0&&(
                       <div style={{display:"flex",gap:5,marginTop:6,overflowX:"auto",scrollbarWidth:"none",WebkitOverflowScrolling:"touch",paddingBottom:2}}>
                         {ev.images.map((src,idx2)=>(
