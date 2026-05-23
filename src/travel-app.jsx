@@ -3825,10 +3825,20 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
         </div>
       </div>
 
-      {/* 刪除確認框 */}
-      <Dialog show={!!delTarget} icon={<Icon name="trash" size={28}/>} title="刪除這個行程？"
-        desc={`「${delTarget?.title}」刪除後將無法復原。`}
-        onConfirm={confirmDel} onCancel={()=>setDelTarget(null)} confirmLabel="確認刪除" danger/>
+      {/* 離開共享旅程確認 */}
+      <Dialog show={showLeaveConfirm}
+        icon={<Icon name="logout" size={28}/>}
+        title="離開共享旅程？"
+        desc="離開後將無法看到此旅程，需要重新輸入邀請碼才能加入。"
+        onConfirm={async()=>{
+          if(!trip._docId) return;
+          const newMembers=(trip.members||[]).filter(uid=>uid!==user?.uid);
+          await updateDoc(doc(fbDb,"trips",trip._docId),{members:newMembers}).catch(()=>{});
+          setShowLeaveConfirm(false);
+          onBack();
+        }}
+        onCancel={()=>setShowLeaveConfirm(false)}
+        confirmLabel="確認離開" danger/>
     </div>
   );
 }
