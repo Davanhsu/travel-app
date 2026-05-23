@@ -1330,9 +1330,8 @@ function ChecklistItem({item, done, onToggle, onRename, pal}){
 
   return(
     <div style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",borderBottom:`1px solid ${BORDER}`,minHeight:34}}>
-      <div onMouseDown={e=>{e.preventDefault();e.stopPropagation();onToggle(e);}}
-        onTouchEnd={e=>{e.stopPropagation();onToggle(e);}}
-        style={{width:20,height:20,borderRadius:6,border:`1.5px solid ${done?pal.bg:BORDER}`,background:done?pal.bg:"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0}}>
+      <div onClick={e=>{e.stopPropagation();onToggle(e);}}
+        style={{width:20,height:20,borderRadius:6,border:`1.5px solid ${done?pal.bg:BORDER}`,background:done?pal.bg:"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,WebkitTapHighlightColor:"transparent"}}>
         {done&&<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="#fff" strokeWidth="2"><path d="M2 6l3 3 5-5"/></svg>}
       </div>
       {editing
@@ -1342,9 +1341,8 @@ function ChecklistItem({item, done, onToggle, onRename, pal}){
             onKeyDown={e=>{ if(e.key==="Enter"){ e.preventDefault(); commit(); } }}
             style={{flex:1,fontSize:16,lineHeight:"20px",height:20,color:TEXT_D,background:"transparent",border:"none",borderBottom:`1px solid ${pal.bg}`,outline:"none",fontFamily:"inherit",padding:0}}/>
         : <span
-            onMouseDown={e=>{ if(done) return; e.preventDefault(); setVal(item); setEditing(true); }}
-            onTouchEnd={e=>{ if(done) return; e.stopPropagation(); setVal(item); setEditing(true); }}
-            style={{flex:1,fontSize:12,lineHeight:"20px",color:done?TEXT_L:TEXT_D,textDecoration:done?"line-through":"none",cursor:done?"default":"text",userSelect:"none"}}>
+            onClick={e=>{ if(done) return; e.stopPropagation(); setVal(item); setEditing(true); }}
+            style={{flex:1,fontSize:12,lineHeight:"20px",color:done?TEXT_L:TEXT_D,textDecoration:done?"line-through":"none",cursor:done?"default":"text",userSelect:"none",WebkitTapHighlightColor:"transparent"}}>
             {item}
           </span>
       }
@@ -1417,16 +1415,26 @@ function TripListTab({trip, onUpdate, pal, listData={}, onUpdateListData}){
   const [memoText,     setMemoText]     = useState(()=>listData.memoText||"");
   const [customPhrases,setCustomPhrases]= useState(()=>listData.customPhrases||[]);
 
-  // 持久化
-  useEffect(()=>{ saveLD("checked",checked); },[JSON.stringify(checked)]);
-  useEffect(()=>{ saveLD("customItems",customItems); },[JSON.stringify(customItems)]);
-  useEffect(()=>{ saveLD("deletedItems",Object.fromEntries(Object.entries(deletedItems).map(([k,v])=>[k,[...v]]))); },[JSON.stringify(Object.fromEntries(Object.entries(deletedItems).map(([k,v])=>[k,[...v]])))]);
-  useEffect(()=>{ saveLD("renamedItems",renamedItems); },[JSON.stringify(renamedItems)]);
-  useEffect(()=>{ saveLD("emergInfo",emergInfo); },[JSON.stringify(emergInfo)]);
-  useEffect(()=>{ saveLD("deletedEmerg",[...deletedEmerg]); },[deletedEmerg.size]);
-  useEffect(()=>{ saveLD("cards",cards); },[JSON.stringify(cards)]);
-  useEffect(()=>{ saveLD("memoText",memoText); },[memoText]);
-  useEffect(()=>{ saveLD("customPhrases",customPhrases); },[JSON.stringify(customPhrases)]);
+  // 持久化 — 用 ref 存最新值，debounce 存儲避免過頻繁寫入
+  const ldRef = useRef({});
+  const saveTimer = useRef(null);
+  const scheduleSave = () => {
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(()=>onUpdateListData({...ldRef.current}), 500);
+  };
+
+  useEffect(()=>{ ldRef.current.checked=checked; scheduleSave(); },[checked]);
+  useEffect(()=>{ ldRef.current.customItems=customItems; scheduleSave(); },[customItems]);
+  useEffect(()=>{
+    ldRef.current.deletedItems=Object.fromEntries(Object.entries(deletedItems).map(([k,v])=>[k,[...v]]));
+    scheduleSave();
+  },[deletedItems]);
+  useEffect(()=>{ ldRef.current.renamedItems=renamedItems; scheduleSave(); },[renamedItems]);
+  useEffect(()=>{ ldRef.current.emergInfo=emergInfo; scheduleSave(); },[emergInfo]);
+  useEffect(()=>{ ldRef.current.deletedEmerg=[...deletedEmerg]; scheduleSave(); },[deletedEmerg]);
+  useEffect(()=>{ ldRef.current.cards=cards; scheduleSave(); },[cards]);
+  useEffect(()=>{ ldRef.current.memoText=memoText; scheduleSave(); },[memoText]);
+  useEffect(()=>{ ldRef.current.customPhrases=customPhrases; scheduleSave(); },[customPhrases]);
 
   const checklistRows = (() => {
     const cat = CHECKLIST_CATS.find(c=>c.id===openCat);
@@ -3588,8 +3596,21 @@ export default function App(){
   const [prefs,setPrefs]=useState(()=>{try{const s=localStorage.getItem(PREFS_KEY);return s?JSON.parse(s):{...DEFAULT_PREFS};}catch{return {...DEFAULT_PREFS};}});
   const [listData,setListData]=useState(()=>{try{const s=localStorage.getItem(LIST_KEY);return s?JSON.parse(s):{};}catch{return {};}});
   const [currentId,setCurrentId]=useState(null);
-  useEffect(()=>{try{localStorage.setItem(STORAGE_KEY,JSON.stringify(trips));}catch{}},[trips]);
+  useEffect(()=>{
+    try{
+      localStorage.setItem(STORAGE_KEY,JSON.stringify(trips));
+    } catch(e) {
+      if(e.name==="QuotaExceededError") console.warn("localStorage 已滿，圖片可能無法儲存");
+    }
+  },[trips]);
   useEffect(()=>{try{localStorage.setItem(PREFS_KEY,JSON.stringify(prefs));}catch{}},[prefs]);
+  useEffect(()=>{
+    try{
+      localStorage.setItem(LIST_KEY,JSON.stringify(listData));
+    } catch(e) {
+      if(e.name==="QuotaExceededError") console.warn("localStorage 已滿");
+    }
+  },[listData]);
   useEffect(()=>{try{localStorage.setItem(LIST_KEY,JSON.stringify(listData));}catch{}},[listData]);
   const cur=trips.find(t=>t.id===currentId)||null;
   const handleAdd=data=>{const t={id:genId(),...data,companions:[],expenses:[],bookmarks:[],flights:[],days:generateDays(data.startDate,data.endDate)};setTrips(p=>[...p,t]);setCurrentId(t.id);};
