@@ -469,22 +469,23 @@ function compressImage(dataUrl, maxW=800, quality=0.75){
 function EventImageUploader({images, onChange}){
   const ref = useRef();
   const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState(null);
   const handleFiles = async e => {
     const files = Array.from(e.target.files);
     if(!files.length) return;
     const remaining = 10 - (images||[]).length;
     const toUpload = files.slice(0, remaining);
     setUploading(true);
+    setUploadError(null);
     try{
       const uid = fbAuth.currentUser?.uid;
       const urls = await Promise.all(toUpload.map(f=>uploadToCloudinary(f, uid)));
       onChange([...(images||[]), ...urls]);
-    } catch {
-      // 失敗時 fallback 到 base64
-      const urls = await Promise.all(toUpload.map(f=>new Promise(res=>{
-        const r=new FileReader(); r.onload=async ev=>res(await compressImage(ev.target.result)); r.readAsDataURL(f);
-      })));
-      onChange([...(images||[]), ...urls]);
+    } catch(err) {
+      const msg = err?.message||"";
+      if(msg.includes("10MB")) setUploadError("檔案超過 10MB，請選擇較小的圖片");
+      else if(msg.includes("格式")) setUploadError("不支援此檔案格式，請使用 JPG、PNG 或 WEBP");
+      else setUploadError("上傳失敗，請稍後再試");
     }
     setUploading(false);
     e.target.value = "";
@@ -517,6 +518,7 @@ function EventImageUploader({images, onChange}){
         <div style={{fontSize:10,color:TEXT_L,marginTop:6}}>{(images||[]).length}/10 張 · 點縮圖右上角 ✕ 可移除</div>
       )}
       {uploading&&<div style={{fontSize:11,color:TEXT_L,marginTop:4}}>上傳中…</div>}
+      {uploadError&&<div style={{fontSize:11,color:"#B04A38",marginTop:4,display:"flex",alignItems:"center",gap:4}}><Icon name="x" size={11} color="#B04A38" sw={2}/>{uploadError}</div>}
     </div>
   );
 }
@@ -880,17 +882,19 @@ function BookmarkTab({ trip, onUpdate }){
     setShowForm(false);
   };
   const delSpot = id => { updateTrip({ bookmarks: bookmarks.filter(b=>b.id!==id) }); setDelTarget(null); };
+  const [imgUploadError, setImgUploadError] = useState(null);
   const handleImgFiles = async e => {
     const files=Array.from(e.target.files), rem=10-fImages.length, toUpload=files.slice(0,rem);
+    setImgUploadError(null);
     try{
       const uid = fbAuth.currentUser?.uid;
       const urls = await Promise.all(toUpload.map(f=>uploadToCloudinary(f, uid)));
       setFImages(p=>[...p,...urls]);
-    } catch {
-      const urls = await Promise.all(toUpload.map(f=>new Promise(res=>{
-        const r=new FileReader(); r.onload=async ev=>res(await compressImage(ev.target.result)); r.readAsDataURL(f);
-      })));
-      setFImages(p=>[...p,...urls]);
+    } catch(err){
+      const msg = err?.message||"";
+      if(msg.includes("10MB")) setImgUploadError("檔案超過 10MB");
+      else if(msg.includes("格式")) setImgUploadError("不支援此檔案格式");
+      else setImgUploadError("上傳失敗，請稍後再試");
     }
     e.target.value="";
   };
@@ -1188,6 +1192,7 @@ function BookmarkTab({ trip, onUpdate }){
               ))}
             </div>
             {fImages.length>0&&<div style={{fontSize:10,color:TEXT_L,marginTop:5}}>{fImages.length}/10 張</div>}
+            {imgUploadError&&<div style={{fontSize:11,color:"#B04A38",marginTop:4,display:"flex",alignItems:"center",gap:4}}><Icon name="x" size={11} color="#B04A38" sw={2}/>{imgUploadError}</div>}
           </div>
           <div style={{display:"flex",gap:12,marginTop:6}}>
             <button onClick={()=>setShowForm(false)} style={{flex:1,padding:"13px 0",borderRadius:16,border:`1.5px solid ${BORDER}`,color:TEXT_M,fontSize:14,background:"none",cursor:"pointer",fontFamily:"inherit"}}>取消</button>
