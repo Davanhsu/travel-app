@@ -3070,11 +3070,14 @@ function TripFormSheet({show,onClose,onSave,initialData}){
 // TripListPage
 // ─────────────────────────────────────────────────────────────
 function TripListPage({trips,prefs,onSelect,onAdd,onDelete,onEditTrip,onUpdatePrefs,onReorder,user,onSignOut,onJoinTrip}){
-  const [showInviteConfirm,setShowInviteConfirm]=useState(null); // 存剛建立的邀請碼
+  const [showInviteConfirm,setShowInviteConfirm]=useState(null);
   const [showJoin,setShowJoin]=useState(false);
   const [joinCode,setJoinCode]=useState("");
   const [joinError,setJoinError]=useState(null);
   const [joinLoading,setJoinLoading]=useState(false);
+  const [delTarget,setDelTarget]=useState(null);
+  const [editTarget,setEditTarget]=useState(null);
+  const [showAdd,setShowAdd]=useState(false);
   const today=new Date().toISOString().slice(0,10);
   const sorted=[...trips].sort((a,b)=>{
     if((a.sortOrder??999)!==(b.sortOrder??999)) return (a.sortOrder??999)-(b.sortOrder??999);
@@ -3851,8 +3854,10 @@ class ErrorBoundary extends React.Component {
     if(this.state.error) return(
       <div style={{minHeight:"100vh",background:"#EEECEA",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,fontFamily:"serif"}}>
         <div style={{fontSize:14,color:"#6A6058",marginBottom:12}}>App 發生錯誤，請重新整理</div>
-        <div style={{fontSize:11,color:"#A09890",background:"#F8F7F5",padding:"12px 16px",borderRadius:12,maxWidth:360,wordBreak:"break-all"}}>
+        <div style={{fontSize:11,color:"#A09890",background:"#F8F7F5",padding:"12px 16px",borderRadius:12,maxWidth:360,wordBreak:"break-all",whiteSpace:"pre-wrap"}}>
           {this.state.error?.message||String(this.state.error)}
+          {"\n\n"}
+          {this.state.error?.stack?.split("\n").slice(0,5).join("\n")}
         </div>
         <button onClick={()=>window.location.reload()} style={{marginTop:20,padding:"10px 24px",borderRadius:14,background:"#2E2824",color:"#fff",border:"none",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>重新整理</button>
       </div>
