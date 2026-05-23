@@ -3315,7 +3315,14 @@ function TripExportView({trip, pal, onClose}){
   const SPOT_CATS_MAP = Object.fromEntries((typeof SPOT_CATS!=="undefined"?SPOT_CATS:[]).map(c=>[c.id,c.label]));
 
   const handlePrint = ()=>{
-    setTimeout(()=>window.print(), 100);
+    setTimeout(()=>{
+      if(/Safari/.test(navigator.userAgent)&&!/Chrome/.test(navigator.userAgent)){
+        // Safari：提示使用者手動列印
+        alert("請使用瀏覽器選單「檔案 → 列印」或 ⌘+P 來儲存 PDF");
+      } else {
+        window.print();
+      }
+    }, 100);
   };
 
   return(
@@ -3323,8 +3330,10 @@ function TripExportView({trip, pal, onClose}){
       <style>{`
         @media print {
           .no-print { display:none !important; }
-          body { margin:0; }
+          body { margin:0; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
           .page-break { page-break-before: always; }
+          * { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+          img { max-width:100% !important; }
         }
         @media screen {
           .export-wrap { max-width:700px; margin:0 auto; padding:0 0 80px; }
@@ -3347,9 +3356,9 @@ function TripExportView({trip, pal, onClose}){
       <div className="export-wrap">
 
         {/* ── 封面 ── */}
-        <div style={{position:"relative",height:320,background:pal.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
+        <div style={{position:"relative",height:320,background:pal.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",overflow:"hidden",WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}>
           {trip.coverImage&&<img src={trip.coverImage} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>}
-          <div style={{position:"absolute",inset:0,background:`linear-gradient(180deg,${pal.bg}99 0%,${pal.bg}DD 100%)`}}/>
+          <div style={{position:"absolute",inset:0,background:`linear-gradient(180deg,${pal.bg}99 0%,${pal.bg}DD 100%)`,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}/>
           <div style={{position:"relative",textAlign:"center",padding:"0 24px"}}>
             <div style={{fontFamily:"Georgia,serif",fontSize:36,fontWeight:700,color:pal.fg,lineHeight:1.2,marginBottom:8}}>{trip.name}</div>
             {trip.subtitle&&<div style={{fontSize:16,color:"rgba(255,255,255,.85)",marginBottom:12}}>{trip.subtitle}</div>}
