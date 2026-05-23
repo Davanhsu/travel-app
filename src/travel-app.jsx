@@ -431,10 +431,20 @@ const CLOUDINARY_URL = "https://api.cloudinary.com/v1_1/dq7gjb7wa/image/upload";
 const CLOUDINARY_PRESET = "travel_app";
 
 async function uploadToCloudinary(file, uid){
+  // 檔案驗證
+  const MAX_SIZE = 10 * 1024 * 1024; // 10MB
+  const ALLOWED = ["image/jpeg","image/png","image/webp","image/heic","image/heif"];
+  if(file.size > MAX_SIZE) throw new Error("檔案超過 10MB 限制");
+  if(!ALLOWED.includes(file.type)&&!file.name.match(/\.(jpg|jpeg|png|webp|heic)$/i))
+    throw new Error("不支援的檔案格式");
+
   const fd = new FormData();
   fd.append("file", file);
   fd.append("upload_preset", CLOUDINARY_PRESET);
-  if(uid) fd.append("folder", "users/"+uid);
+  if(uid){
+    fd.append("folder", "travel_app/users/"+uid);
+    fd.append("context", "uid="+uid);
+  }
   const res = await fetch(CLOUDINARY_URL, {method:"POST", body:fd});
   const data = await res.json();
   if(data.secure_url) return data.secure_url;
