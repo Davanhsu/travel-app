@@ -218,7 +218,7 @@ function PalettePicker({value,onChange}){
 }
 function CoverImagePicker({value,onChange}){
   const ref=useRef();
-  const hf=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>onChange(ev.target.result);r.readAsDataURL(f);};
+  const hf=async e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=async ev=>onChange(await compressImage(ev.target.result,1200,0.8));r.readAsDataURL(f);};
   return(
     <div>
       <label style={{fontSize:11,color:TEXT_L,display:"block",marginBottom:8,letterSpacing:"0.07em",textTransform:"uppercase"}}>封面圖片（選填）</label>
@@ -401,25 +401,34 @@ function CompactTimePicker({value, onChange}){
     </div>
   );
 }
-// ─── 行程圖片上傳器（多張，最多10張縮圖格）───
+// ─── 圖片壓縮（存入前縮小，防 localStorage 超限）───
+function compressImage(dataUrl, maxW=800, quality=0.75){
+  return new Promise(res=>{
+    const img=new Image();
+    img.onload=()=>{
+      const scale=Math.min(1, maxW/Math.max(img.width,img.height));
+      const w=Math.round(img.width*scale), h=Math.round(img.height*scale);
+      const c=document.createElement("canvas"); c.width=w; c.height=h;
+      c.getContext("2d").drawImage(img,0,0,w,h);
+      res(c.toDataURL("image/jpeg",quality));
+    };
+    img.onerror=()=>res(dataUrl);
+    img.src=dataUrl;
+  });
+}
 function EventImageUploader({images, onChange}){
   const ref = useRef();
-  const handleFiles = e => {
+  const handleFiles = async e => {
     const files = Array.from(e.target.files);
     if(!files.length) return;
     const remaining = 10 - (images||[]).length;
     const toRead = files.slice(0, remaining);
-    let loaded = 0;
-    const results = new Array(toRead.length);
-    toRead.forEach((f,i)=>{
-      const r = new FileReader();
-      r.onload = ev => {
-        results[i] = ev.target.result;
-        loaded++;
-        if(loaded === toRead.length) onChange([...(images||[]), ...results]);
-      };
+    const results = await Promise.all(toRead.map(f=>new Promise(res=>{
+      const r=new FileReader();
+      r.onload=async ev=>res(await compressImage(ev.target.result));
       r.readAsDataURL(f);
-    });
+    })));
+    onChange([...(images||[]), ...results]);
     e.target.value = "";
   };
   const removeImg = idx => onChange((images||[]).filter((_,i)=>i!==idx));
@@ -812,10 +821,14 @@ function BookmarkTab({ trip, onUpdate }){
     setShowForm(false);
   };
   const delSpot = id => { updateTrip({ bookmarks: bookmarks.filter(b=>b.id!==id) }); setDelTarget(null); };
-  const handleImgFiles = e => {
+  const handleImgFiles = async e => {
     const files=Array.from(e.target.files), rem=10-fImages.length, toRead=files.slice(0,rem);
-    let loaded=0; const results=new Array(toRead.length);
-    toRead.forEach((f,i)=>{ const r=new FileReader(); r.onload=ev=>{results[i]=ev.target.result;loaded++;if(loaded===toRead.length)setFImages(p=>[...p,...results]);}; r.readAsDataURL(f); });
+    const results = await Promise.all(toRead.map(f=>new Promise(res=>{
+      const r=new FileReader();
+      r.onload=async ev=>res(await compressImage(ev.target.result));
+      r.readAsDataURL(f);
+    })));
+    setFImages(p=>[...p,...results]);
     e.target.value="";
   };
   const openMaps = item => {
@@ -1375,31 +1388,45 @@ function HorizontalScroll({children, height}){
   );
 }
 
-function TripListTab({trip, onUpdate, pal}){
+function TripListTab({trip, onUpdate, pal, listData={}, onUpdateListData}){
+  const saveLD = (key, val) => onUpdateListData({...listData, [key]: val});
+
   const [openCat,      setOpenCat]      = useState("docs");
   const [openChecklist,setOpenChecklist]= useState(false);
   const [openEmerg,    setOpenEmerg]    = useState(false);
   const [openTrans,    setOpenTrans]    = useState(false);
   const [openMemo,     setOpenMemo]     = useState(false);
-  const [memoText,     setMemoText]     = useState("");
   const [openFlight,   setOpenFlight]   = useState(false);
   const [openCards,    setOpenCards]    = useState(false);
-  const [cards,        setCards]        = useState([]); // [{id,name,scene,perk,note}]
-  const [cardForm,     setCardForm]     = useState(null); // null | {id?,name,scene,perk,note}
+  const [cardForm,     setCardForm]     = useState(null);
   const [confirmCard,  setConfirmCard]  = useState(null);
-  const [sectionOrder, setSectionOrder] = useState(["flight","cards","checklist","emerg","trans"]);
-  const [translating,  setTranslating]  = useState({});
-  const [translated,   setTranslated]   = useState({});
-  const [checked,      setChecked]      = useState({});
-  const [customItems,  setCustomItems]  = useState({});
   const [newItemText,  setNewItemText]  = useState({});
-  const [emergInfo,    setEmergInfo]    = useState({});
-  const [deletedEmerg, setDeletedEmerg] = useState(new Set()); // 已刪除的預設欄位 key
-  const [customPhrases,setCustomPhrases]= useState([]);
   const [newPhrase,    setNewPhrase]    = useState("");
 
-  const [deletedItems,setDeletedItems]=useState({}); // catId → Set of deleted default items
-  const [renamedItems,setRenamedItems]=useState({}); // catId → { 原名: 新名 }
+  // 從 localStorage 初始化
+  const [checked,      setChecked]      = useState(()=>listData.checked||{});
+  const [customItems,  setCustomItems]  = useState(()=>listData.customItems||{});
+  const [deletedItems, setDeletedItems] = useState(()=>{
+    const d=listData.deletedItems||{};
+    return Object.fromEntries(Object.entries(d).map(([k,v])=>[k,new Set(v)]));
+  });
+  const [renamedItems, setRenamedItems] = useState(()=>listData.renamedItems||{});
+  const [emergInfo,    setEmergInfo]    = useState(()=>listData.emergInfo||{});
+  const [deletedEmerg, setDeletedEmerg] = useState(()=>new Set(listData.deletedEmerg||[]));
+  const [cards,        setCards]        = useState(()=>listData.cards||[]);
+  const [memoText,     setMemoText]     = useState(()=>listData.memoText||"");
+  const [customPhrases,setCustomPhrases]= useState(()=>listData.customPhrases||[]);
+
+  // 持久化
+  useEffect(()=>{ saveLD("checked",checked); },[JSON.stringify(checked)]);
+  useEffect(()=>{ saveLD("customItems",customItems); },[JSON.stringify(customItems)]);
+  useEffect(()=>{ saveLD("deletedItems",Object.fromEntries(Object.entries(deletedItems).map(([k,v])=>[k,[...v]]))); },[JSON.stringify(Object.fromEntries(Object.entries(deletedItems).map(([k,v])=>[k,[...v]])))]);
+  useEffect(()=>{ saveLD("renamedItems",renamedItems); },[JSON.stringify(renamedItems)]);
+  useEffect(()=>{ saveLD("emergInfo",emergInfo); },[JSON.stringify(emergInfo)]);
+  useEffect(()=>{ saveLD("deletedEmerg",[...deletedEmerg]); },[deletedEmerg.size]);
+  useEffect(()=>{ saveLD("cards",cards); },[JSON.stringify(cards)]);
+  useEffect(()=>{ saveLD("memoText",memoText); },[memoText]);
+  useEffect(()=>{ saveLD("customPhrases",customPhrases); },[JSON.stringify(customPhrases)]);
 
   const checklistRows = (() => {
     const cat = CHECKLIST_CATS.find(c=>c.id===openCat);
@@ -2635,7 +2662,7 @@ function WalletTab({trip,onUpdate}){
                 style={{width:"100%",padding:"9px 12px",border:`1.5px solid ${BORDER}`,borderRadius:12,background:APP_BG,fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none"}}/>
             </div>
             <div>
-              <input ref={photoRef} type="file" accept="image/*" onChange={e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=ev=>setFPhoto(ev.target.result);r.readAsDataURL(f);}} style={{display:"none"}}/>
+              <input ref={photoRef} type="file" accept="image/*" onChange={async e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=async ev=>setFPhoto(await compressImage(ev.target.result));r.readAsDataURL(f);}} style={{display:"none"}}/>
               {fPhoto
                 ? <div style={{position:"relative",width:40,height:40,borderRadius:12,overflow:"hidden"}}>
                     <img src={fPhoto} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
@@ -3079,7 +3106,7 @@ function TransitBar({from,fromUrl,to,toUrl,pal}){
   );
 }
 
-function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect,onAdd,onDelete,onEditTrip}){
+function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect,onAdd,onDelete,onEditTrip,listData,onUpdateListData}){
   const pal=PALETTE[trip.paletteIdx??0];
   const [dayIdx,setDayIdx]=useState(0),[showAdd,setShowAdd]=useState(false);
   const [editIdx,setEditIdx]=useState(null),[form,setForm]=useState({title:"",time:"09:00",duration:"1 小時",location:"",locationUrl:"",content:"",images:[]});
@@ -3388,7 +3415,7 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
       {/* 封面 Header — 緊湊版 */}
       <div style={{background:pal.bg,padding:"36px 18px 14px",position:"relative",overflow:"hidden"}}>
         {trip.coverImage&&<div style={{position:"absolute",inset:0}}><img src={trip.coverImage} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/><div style={{position:"absolute",inset:0,background:`linear-gradient(180deg,${pal.bg}CC 0%,${pal.bg}90 100%)`}}/></div>}
-        {!trip.coverImage&&<><div style={{position:"absolute",right:-20,top:-20,width:120,height:120,borderRadius:"50%",background:"rgba(255,255,255,.07)"}}/><div style={{position:"absolute",right:18,bottom:-10,width:60,height:60,borderRadius:"50%",background:"rgba(255,255,255,.05)"}}/></>}
+        
         <div style={{position:"relative",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <div style={{display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0}}>
             <button onClick={onBack} style={{display:"flex",alignItems:"center",gap:3,background:"rgba(255,255,255,.16)",border:"none",borderRadius:20,padding:"5px 10px",cursor:"pointer",color:pal.fg,fontSize:11,fontFamily:"inherit",flexShrink:0}}>
@@ -3501,7 +3528,8 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
         );
       })()}
       {activeTab==="calendar"&&renderCalendar()}
-      {activeTab==="map"&&<TripListTab trip={trip} onUpdate={onUpdate} pal={pal}/>}
+      {activeTab==="map"&&<TripListTab trip={trip} onUpdate={onUpdate} pal={pal}
+        listData={listData?.[trip.id]||{}} onUpdateListData={d=>onUpdateListData(p=>({...p,[trip.id]:d}))}/>}
       {activeTab==="wallet"&&<WalletTab trip={trip} onUpdate={onUpdate}/>}
       {activeTab==="bookmark"&&<BookmarkTab trip={trip} onUpdate={onUpdate}/>}
 
@@ -3541,7 +3569,7 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
 // ─────────────────────────────────────────────────────────────
 // Main App
 // ─────────────────────────────────────────────────────────────
-const STORAGE_KEY="TRAVEL_APP_V8_TRIPS", PREFS_KEY="TRAVEL_APP_V8_PREFS";
+const STORAGE_KEY="TRAVEL_APP_V8_TRIPS", PREFS_KEY="TRAVEL_APP_V8_PREFS", LIST_KEY="TRAVEL_APP_V8_LIST";
 
 export default function App(){
   // 防止 iOS input focus 時頁面放大
@@ -3558,9 +3586,11 @@ export default function App(){
   },[]);
   const [trips,setTrips]=useState(()=>{try{const s=localStorage.getItem(STORAGE_KEY);return s?JSON.parse(s):buildDefaultTrips();}catch{return buildDefaultTrips();}});
   const [prefs,setPrefs]=useState(()=>{try{const s=localStorage.getItem(PREFS_KEY);return s?JSON.parse(s):{...DEFAULT_PREFS};}catch{return {...DEFAULT_PREFS};}});
+  const [listData,setListData]=useState(()=>{try{const s=localStorage.getItem(LIST_KEY);return s?JSON.parse(s):{};}catch{return {};}});
   const [currentId,setCurrentId]=useState(null);
   useEffect(()=>{try{localStorage.setItem(STORAGE_KEY,JSON.stringify(trips));}catch{}},[trips]);
   useEffect(()=>{try{localStorage.setItem(PREFS_KEY,JSON.stringify(prefs));}catch{}},[prefs]);
+  useEffect(()=>{try{localStorage.setItem(LIST_KEY,JSON.stringify(listData));}catch{}},[listData]);
   const cur=trips.find(t=>t.id===currentId)||null;
   const handleAdd=data=>{const t={id:genId(),...data,companions:[],expenses:[],bookmarks:[],flights:[],days:generateDays(data.startDate,data.endDate)};setTrips(p=>[...p,t]);setCurrentId(t.id);};
   const handleEdit=(id,data)=>setTrips(p=>p.map(t=>t.id!==id?t:{...t,...data,days:generateDays(data.startDate,data.endDate,t.days)}));
@@ -3587,7 +3617,8 @@ export default function App(){
       {cur
         ?<TripDetailPage trip={cur} onBack={()=>setCurrentId(null)} onUpdate={handleUpdate}
             trips={trips} prefs={prefs} onUpdatePrefs={setPrefs}
-            onSelect={setCurrentId} onAdd={handleAdd} onDelete={handleDelete} onEditTrip={handleEdit}/>
+            onSelect={setCurrentId} onAdd={handleAdd} onDelete={handleDelete} onEditTrip={handleEdit}
+            listData={listData} onUpdateListData={setListData}/>
         :<TripListPage trips={trips} prefs={prefs} onSelect={setCurrentId} onAdd={handleAdd} onDelete={handleDelete} onEditTrip={handleEdit} onUpdatePrefs={setPrefs} onReorder={setTrips}/>
       }
     </div>
