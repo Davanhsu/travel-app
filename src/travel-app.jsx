@@ -3228,22 +3228,31 @@ function InviteCodeButton({code}){
   const [show,setShow]=useState(false);
   const [copied,setCopied]=useState(false);
   const reveal=()=>{
-    setShow(true);
-    navigator.clipboard?.writeText(code);
-    setCopied(true);
-    setTimeout(()=>setCopied(false),2000);
+    setShow(v=>!v);
+    if(!show){
+      navigator.clipboard?.writeText(code);
+      setCopied(true);
+      setTimeout(()=>setCopied(false),2000);
+    }
   };
   return(
-    <button
-      onClick={reveal}
-      onMouseEnter={()=>setShow(true)}
-      onMouseLeave={()=>setShow(false)}
-      style={{display:"flex",flexDirection:"column",alignItems:"center",background:"rgba(255,255,255,.18)",border:"none",borderRadius:14,padding:"6px 10px",cursor:"pointer",flexShrink:0,marginLeft:8,minWidth:60}}>
-      <div style={{fontSize:9,color:"rgba(255,255,255,.7)",marginBottom:2}}>{copied?"已複製！":"邀請碼"}</div>
-      <div style={{fontSize:13,fontWeight:700,color:"#fff",letterSpacing:"0.1em",filter:show?"none":"blur(5px)",transition:"filter .25s",userSelect:show?"auto":"none"}}>
-        {code}
-      </div>
-    </button>
+    <div style={{position:"relative",flexShrink:0,marginLeft:8}}>
+      <button
+        onClick={reveal}
+        onMouseEnter={()=>setShow(true)}
+        onMouseLeave={()=>setShow(false)}
+        style={{display:"flex",alignItems:"center",justifyContent:"center",width:36,height:36,background:"rgba(255,255,255,.18)",border:"none",borderRadius:12,cursor:"pointer"}}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="rgba(255,255,255,.9)" stroke="rgba(255,255,255,.6)" strokeWidth="1.5">
+          <path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/>
+        </svg>
+      </button>
+      {show&&(
+        <div style={{position:"absolute",top:42,right:0,background:"rgba(0,0,0,.75)",borderRadius:12,padding:"8px 12px",whiteSpace:"nowrap",zIndex:100}}>
+          <div style={{fontSize:9,color:"rgba(255,255,255,.6)",marginBottom:3,textAlign:"center"}}>{copied?"已複製！":"點擊複製"}</div>
+          <div style={{fontSize:16,fontWeight:700,color:"#fff",letterSpacing:"0.15em"}}>{code}</div>
+        </div>
+      )}
+    </div>
   );
 }
 
