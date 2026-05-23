@@ -314,34 +314,46 @@ const ITEM_H_SM = 36;
 
 function WheelColumnSm({items, value, onChange}){
   const ref = useRef();
-  // 初始 + value 變化時同步 scroll 位置
+  const tripled = [...items,...items,...items]; // 三倍陣列實現無限循環
+  const offset  = items.length; // 中間段起點
+
   useEffect(()=>{
     const idx = items.indexOf(value);
-    if(ref.current && idx >= 0) ref.current.scrollTop = idx * ITEM_H_SM;
-  }, [value, items]);
+    if(ref.current && idx >= 0){
+      // 滾到中間段的對應位置
+      ref.current.scrollTop = (offset + idx) * ITEM_H_SM;
+    }
+  }, [value]);
+
   const onScroll = ()=>{
     if(!ref.current) return;
-    const idx = Math.round(ref.current.scrollTop / ITEM_H_SM);
-    const v = items[Math.max(0, Math.min(idx, items.length-1))];
+    const raw = ref.current.scrollTop;
+    let idx = Math.round(raw / ITEM_H_SM);
+    // 循環：滾到邊界時回到中間段
+    if(idx < items.length/2){
+      idx += items.length;
+      ref.current.scrollTop = idx * ITEM_H_SM;
+    } else if(idx >= items.length * 2.5){
+      idx -= items.length;
+      ref.current.scrollTop = idx * ITEM_H_SM;
+    }
+    const v = items[idx % items.length];
     if(v !== value) onChange(v);
   };
+
   return (
     <div style={{flex:1, position:"relative", height:ITEM_H_SM*3, overflow:"hidden"}}>
-      {/* 上遮罩 */}
       <div style={{position:"absolute",top:0,left:0,right:0,height:ITEM_H_SM,background:`linear-gradient(to bottom,${APP_BG} 40%,transparent)`,zIndex:2,pointerEvents:"none"}}/>
-      {/* 下遮罩 */}
       <div style={{position:"absolute",bottom:0,left:0,right:0,height:ITEM_H_SM,background:`linear-gradient(to top,${APP_BG} 40%,transparent)`,zIndex:2,pointerEvents:"none"}}/>
-      {/* 選取高亮線 */}
       <div style={{position:"absolute",top:ITEM_H_SM,left:4,right:4,height:ITEM_H_SM,borderTop:`1.5px solid ${BORDER}`,borderBottom:`1.5px solid ${BORDER}`,zIndex:3,pointerEvents:"none"}}/>
       <div ref={ref} onScroll={onScroll}
-        style={{height:"100%",overflowY:"scroll",scrollSnapType:"y mandatory",scrollbarWidth:"none",WebkitOverflowScrolling:"touch",paddingTop:ITEM_H_SM,paddingBottom:ITEM_H_SM}}>
-        {items.map(item=>(
-          <div key={item}
+        style={{height:"100%",overflowY:"scroll",scrollSnapType:"y mandatory",scrollbarWidth:"none",WebkitOverflowScrolling:"touch"}}>
+        {tripled.map((item,i)=>(
+          <div key={i}
             style={{height:ITEM_H_SM,display:"flex",alignItems:"center",justifyContent:"center",scrollSnapAlign:"center",
               fontFamily:"Georgia,serif",fontSize:17,
               fontWeight:item===value?700:400,
               color:item===value?TEXT_D:TEXT_L,
-              transition:"font-weight .1s,color .1s",
               userSelect:"none"}}>
             {item}
           </div>
@@ -3669,7 +3681,7 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
   const schedule=trip.days[dayIdx]?.schedule||[];
   const sf=k=>v=>setForm(f=>({...f,[k]:v}));
   const updateSched=ns=>{const u=deepClone(trip);u.days[dayIdx].schedule=ns;onUpdate(u);};
-  const openAdd=()=>{setEditIdx(null);setForm({title:"",time:"09:00",duration:"1 小時",location:"",locationUrl:"",content:"",images:[]});setShowAdd(true);};
+  const openAdd=()=>{const now=new Date();const ct=String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()<30?"00":"30");setEditIdx(null);setForm({title:"",time:ct,duration:"1 小時",location:"",locationUrl:"",content:"",images:[]});setShowAdd(true);};
   const openEdit=i=>{setEditIdx(i);setForm({title:"",time:"09:00",duration:"1 小時",location:"",locationUrl:"",content:"",images:[],...schedule[i]});setShowAdd(true);};
   const saveEvent=()=>{
     if(!form.title.trim()) return;
