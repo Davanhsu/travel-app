@@ -1,5 +1,5 @@
 // v$(date +%s)
-import { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 
 // ─── Firebase ───
 import { initializeApp } from "firebase/app";
@@ -3833,9 +3833,25 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
   );
 }
 
-// ─────────────────────────────────────────────────────────────
-// Main App
-// ─────────────────────────────────────────────────────────────
+// ─── Error Boundary ───
+class ErrorBoundary extends React.Component {
+  constructor(props){ super(props); this.state={error:null}; }
+  static getDerivedStateFromError(e){ return {error:e}; }
+  render(){
+    if(this.state.error) return(
+      <div style={{minHeight:"100vh",background:"#EEECEA",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24,fontFamily:"serif"}}>
+        <div style={{fontSize:14,color:"#6A6058",marginBottom:12}}>App 發生錯誤，請重新整理</div>
+        <div style={{fontSize:11,color:"#A09890",background:"#F8F7F5",padding:"12px 16px",borderRadius:12,maxWidth:360,wordBreak:"break-all"}}>
+          {this.state.error?.message||String(this.state.error)}
+        </div>
+        <button onClick={()=>window.location.reload()} style={{marginTop:20,padding:"10px 24px",borderRadius:14,background:"#2E2824",color:"#fff",border:"none",cursor:"pointer",fontSize:13,fontFamily:"inherit"}}>重新整理</button>
+      </div>
+    );
+    return this.props.children;
+  }
+}
+
+// ─── Main App ───
 const STORAGE_KEY="TRAVEL_APP_V8_TRIPS", PREFS_KEY="TRAVEL_APP_V8_PREFS", LIST_KEY="TRAVEL_APP_V8_LIST";
 
 // ─── 登入頁面 ───
@@ -3898,7 +3914,7 @@ function LoginPage(){
   );
 }
 
-export default function App(){
+function AppInner(){
   const [user,    setUser]    = useState(undefined); // undefined=loading, null=logged out
   const [trips,   setTrips]   = useState([]);
   const [prefs,   setPrefs]   = useState({...DEFAULT_PREFS});
@@ -4055,4 +4071,8 @@ export default function App(){
       }
     </div>
   );
+}
+
+export default function App(){
+  return <ErrorBoundary><AppInner/></ErrorBoundary>;
 }
