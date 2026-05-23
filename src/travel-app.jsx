@@ -3800,8 +3800,16 @@ export default function App(){
 
   const handleAdd = async data=>{
     if(!user) return;
-    const t = {id:genId(),...data,companions:[],expenses:[],bookmarks:[],flights:[],days:generateDays(data.startDate,data.endDate),ownerId:user.uid,members:[user.uid],type:"personal",inviteCode:null,createdAt:Date.now()};
-    const ref = await addDoc(collection(fbDb,"trips"), t);
+    const t = {
+      id:genId(), ...data,
+      companions:[], expenses:[], bookmarks:[], flights:[],
+      days:generateDays(data.startDate,data.endDate),
+      ownerId:user.uid, members:[user.uid],
+      type:data.type||"personal",
+      inviteCode:data.inviteCode||null,
+      createdAt:Date.now()
+    };
+    await addDoc(collection(fbDb,"trips"), t);
     setCurrentId(t.id);
   };
 
