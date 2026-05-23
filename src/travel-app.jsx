@@ -3315,7 +3315,7 @@ function TripExportView({trip, pal, onClose}){
   const SPOT_CATS_MAP = Object.fromEntries((typeof SPOT_CATS!=="undefined"?SPOT_CATS:[]).map(c=>[c.id,c.label]));
 
   const handlePrint = ()=>{
-    window.print();
+    setTimeout(()=>window.print(), 100);
   };
 
   return(
