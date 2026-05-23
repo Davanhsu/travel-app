@@ -3224,6 +3224,29 @@ function TransitBar({from,fromUrl,to,toUrl,pal}){
   );
 }
 
+function InviteCodeButton({code}){
+  const [show,setShow]=useState(false);
+  const [copied,setCopied]=useState(false);
+  const reveal=()=>{
+    setShow(true);
+    navigator.clipboard?.writeText(code);
+    setCopied(true);
+    setTimeout(()=>setCopied(false),2000);
+  };
+  return(
+    <button
+      onClick={reveal}
+      onMouseEnter={()=>setShow(true)}
+      onMouseLeave={()=>setShow(false)}
+      style={{display:"flex",flexDirection:"column",alignItems:"center",background:"rgba(255,255,255,.18)",border:"none",borderRadius:14,padding:"6px 10px",cursor:"pointer",flexShrink:0,marginLeft:8,minWidth:60}}>
+      <div style={{fontSize:9,color:"rgba(255,255,255,.7)",marginBottom:2}}>{copied?"已複製！":"邀請碼"}</div>
+      <div style={{fontSize:13,fontWeight:700,color:"#fff",letterSpacing:"0.1em",filter:show?"none":"blur(5px)",transition:"filter .25s",userSelect:show?"auto":"none"}}>
+        {code}
+      </div>
+    </button>
+  );
+}
+
 function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect,onAdd,onDelete,onEditTrip,listData,onUpdateListData,user}){
   const pal=PALETTE[trip.paletteIdx??0];
   const [dayIdx,setDayIdx]=useState(0),[showAdd,setShowAdd]=useState(false);
@@ -3545,11 +3568,7 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
             </div>
           </div>
           {trip.type==="shared"&&trip.inviteCode&&(
-            <button onClick={()=>{ navigator.clipboard?.writeText(trip.inviteCode); alert("邀請碼已複製："+trip.inviteCode); }}
-              style={{display:"flex",flexDirection:"column",alignItems:"center",background:"rgba(255,255,255,.18)",border:"none",borderRadius:14,padding:"6px 10px",cursor:"pointer",flexShrink:0,marginLeft:8}}>
-              <div style={{fontSize:9,color:"rgba(255,255,255,.7)"}}>邀請碼</div>
-              <div style={{fontSize:13,fontWeight:700,color:"#fff",letterSpacing:"0.1em"}}>{trip.inviteCode}</div>
-            </button>
+            <InviteCodeButton code={trip.inviteCode}/>
           )}
         </div>
       </div>
