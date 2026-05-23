@@ -313,49 +313,51 @@ function TimePicker({value,onChange}){
 const ITEM_H_SM = 36;
 
 function WheelColumnSm({items, value, onChange}){
-  const ref = useRef();
-  const LEN = items.length;
-  const tripled = [...items,...items,...items];
+  const ref    = useRef();
+  const LEN    = items.length;
+  const tripled= [...items,...items,...items];
+  const timer  = useRef(null);
 
-  // 初始定位到中間段
+  // 定位到中間段
   useEffect(()=>{
     const idx = items.indexOf(value);
     if(ref.current && idx >= 0){
       ref.current.scrollTop = (LEN + idx) * ITEM_H_SM;
     }
-  },[value]);
+  },[value, items]);
 
-  const onScroll = ()=>{
+  const commit = ()=>{
     if(!ref.current) return;
     const scrollTop = ref.current.scrollTop;
-    const idx = Math.round(scrollTop / ITEM_H_SM);
-    // 無限循環：到邊界時跳回中間段
-    if(idx < LEN * 0.5){
+    const rawIdx    = scrollTop / ITEM_H_SM;
+    const idx       = Math.round(rawIdx);
+    // 無限循環邊界處理
+    if(idx < Math.round(LEN * 0.5)){
       ref.current.scrollTop = (idx + LEN) * ITEM_H_SM;
       return;
     }
-    if(idx >= LEN * 2.5){
+    if(idx >= Math.round(LEN * 2.5)){
       ref.current.scrollTop = (idx - LEN) * ITEM_H_SM;
       return;
     }
-    const v = items[idx % LEN];
+    const v = items[((idx % LEN) + LEN) % LEN];
     if(v && v !== value) onChange(v);
   };
 
+  const onScroll = ()=>{
+    clearTimeout(timer.current);
+    timer.current = setTimeout(commit, 80);
+  };
+
   return (
-    <div style={{flex:1, position:"relative", height:ITEM_H_SM*3, overflow:"hidden"}}>
+    <div style={{flex:1,position:"relative",height:ITEM_H_SM*3,overflow:"hidden"}}>
       <div style={{position:"absolute",top:0,left:0,right:0,height:ITEM_H_SM,background:`linear-gradient(to bottom,${APP_BG} 40%,transparent)`,zIndex:2,pointerEvents:"none"}}/>
       <div style={{position:"absolute",bottom:0,left:0,right:0,height:ITEM_H_SM,background:`linear-gradient(to top,${APP_BG} 40%,transparent)`,zIndex:2,pointerEvents:"none"}}/>
       <div style={{position:"absolute",top:ITEM_H_SM,left:4,right:4,height:ITEM_H_SM,borderTop:`1.5px solid ${BORDER}`,borderBottom:`1.5px solid ${BORDER}`,zIndex:3,pointerEvents:"none"}}/>
       <div ref={ref} onScroll={onScroll}
         style={{height:"100%",overflowY:"scroll",scrollSnapType:"y mandatory",scrollbarWidth:"none",WebkitOverflowScrolling:"touch"}}>
         {tripled.map((item,i)=>(
-          <div key={i}
-            style={{height:ITEM_H_SM,display:"flex",alignItems:"center",justifyContent:"center",scrollSnapAlign:"center",
-              fontFamily:"Georgia,serif",fontSize:17,
-              fontWeight:item===value?700:400,
-              color:item===value?TEXT_D:TEXT_L,
-              userSelect:"none"}}>
+          <div key={i} style={{height:ITEM_H_SM,display:"flex",alignItems:"center",justifyContent:"center",scrollSnapAlign:"center",fontFamily:"Georgia,serif",fontSize:17,fontWeight:item===value?700:400,color:item===value?TEXT_D:TEXT_L,userSelect:"none"}}>
             {item}
           </div>
         ))}
