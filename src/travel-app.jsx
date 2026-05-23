@@ -1,6 +1,27 @@
 // v$(date +%s)
 import { useState, useEffect, useRef, useCallback } from "react";
 
+// ─── Firebase ───
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFirestore, doc, getDoc, setDoc, collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, enableIndexedDbPersistence } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyAdHjcnI678F2XvpLcNNMpbDBRR8bkLYY0",
+  authDomain: "hafnicetravel.firebaseapp.com",
+  projectId: "hafnicetravel",
+  storageBucket: "hafnicetravel.firebasestorage.app",
+  messagingSenderId: "773425164448",
+  appId: "1:773425164448:web:a33752aa9339f50ae099c5",
+};
+
+const fbApp  = initializeApp(firebaseConfig);
+const fbAuth = getAuth(fbApp);
+const fbDb   = getFirestore(fbApp);
+
+// 啟用離線快取
+try { enableIndexedDbPersistence(fbDb); } catch(e) {}
+
 // ─────────────────────────────────────────────────────────────
 // SVG Icons
 // ─────────────────────────────────────────────────────────────
@@ -218,7 +239,11 @@ function PalettePicker({value,onChange}){
 }
 function CoverImagePicker({value,onChange}){
   const ref=useRef();
-  const hf=async e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=async ev=>onChange(await compressImage(ev.target.result,1200,0.8));r.readAsDataURL(f);};
+  const hf=async e=>{
+    const f=e.target.files[0]; if(!f)return;
+    try{ onChange(await uploadToCloudinary(f)); }
+    catch{ const r=new FileReader(); r.onload=async ev=>onChange(await compressImage(ev.target.result,1200,0.8)); r.readAsDataURL(f); }
+  };
   return(
     <div>
       <label style={{fontSize:11,color:TEXT_L,display:"block",marginBottom:8,letterSpacing:"0.07em",textTransform:"uppercase"}}>封面圖片（選填）</label>
@@ -418,17 +443,24 @@ function compressImage(dataUrl, maxW=800, quality=0.75){
 }
 function EventImageUploader({images, onChange}){
   const ref = useRef();
+  const [uploading, setUploading] = useState(false);
   const handleFiles = async e => {
     const files = Array.from(e.target.files);
     if(!files.length) return;
     const remaining = 10 - (images||[]).length;
-    const toRead = files.slice(0, remaining);
-    const results = await Promise.all(toRead.map(f=>new Promise(res=>{
-      const r=new FileReader();
-      r.onload=async ev=>res(await compressImage(ev.target.result));
-      r.readAsDataURL(f);
-    })));
-    onChange([...(images||[]), ...results]);
+    const toUpload = files.slice(0, remaining);
+    setUploading(true);
+    try{
+      const urls = await Promise.all(toUpload.map(f=>uploadToCloudinary(f)));
+      onChange([...(images||[]), ...urls]);
+    } catch {
+      // 失敗時 fallback 到 base64
+      const urls = await Promise.all(toUpload.map(f=>new Promise(res=>{
+        const r=new FileReader(); r.onload=async ev=>res(await compressImage(ev.target.result)); r.readAsDataURL(f);
+      })));
+      onChange([...(images||[]), ...urls]);
+    }
+    setUploading(false);
     e.target.value = "";
   };
   const removeImg = idx => onChange((images||[]).filter((_,i)=>i!==idx));
@@ -458,6 +490,7 @@ function EventImageUploader({images, onChange}){
       {(images||[]).length > 0 && (
         <div style={{fontSize:10,color:TEXT_L,marginTop:6}}>{(images||[]).length}/10 張 · 點縮圖右上角 ✕ 可移除</div>
       )}
+      {uploading&&<div style={{fontSize:11,color:TEXT_L,marginTop:4}}>上傳中…</div>}
     </div>
   );
 }
@@ -822,13 +855,16 @@ function BookmarkTab({ trip, onUpdate }){
   };
   const delSpot = id => { updateTrip({ bookmarks: bookmarks.filter(b=>b.id!==id) }); setDelTarget(null); };
   const handleImgFiles = async e => {
-    const files=Array.from(e.target.files), rem=10-fImages.length, toRead=files.slice(0,rem);
-    const results = await Promise.all(toRead.map(f=>new Promise(res=>{
-      const r=new FileReader();
-      r.onload=async ev=>res(await compressImage(ev.target.result));
-      r.readAsDataURL(f);
-    })));
-    setFImages(p=>[...p,...results]);
+    const files=Array.from(e.target.files), rem=10-fImages.length, toUpload=files.slice(0,rem);
+    try{
+      const urls = await Promise.all(toUpload.map(f=>uploadToCloudinary(f)));
+      setFImages(p=>[...p,...urls]);
+    } catch {
+      const urls = await Promise.all(toUpload.map(f=>new Promise(res=>{
+        const r=new FileReader(); r.onload=async ev=>res(await compressImage(ev.target.result)); r.readAsDataURL(f);
+      })));
+      setFImages(p=>[...p,...urls]);
+    }
     e.target.value="";
   };
   const openMaps = item => {
@@ -2670,7 +2706,7 @@ function WalletTab({trip,onUpdate}){
                 style={{width:"100%",padding:"9px 12px",border:`1.5px solid ${BORDER}`,borderRadius:12,background:APP_BG,fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none"}}/>
             </div>
             <div>
-              <input ref={photoRef} type="file" accept="image/*" onChange={async e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=async ev=>setFPhoto(await compressImage(ev.target.result));r.readAsDataURL(f);}} style={{display:"none"}}/>
+              <input ref={photoRef} type="file" accept="image/*" onChange={async e=>{const f=e.target.files[0];if(!f)return;try{setFPhoto(await uploadToCloudinary(f));}catch{const r=new FileReader();r.onload=async ev=>setFPhoto(await compressImage(ev.target.result));r.readAsDataURL(f);}}} style={{display:"none"}}/>
               {fPhoto
                 ? <div style={{position:"relative",width:40,height:40,borderRadius:12,overflow:"hidden"}}>
                     <img src={fPhoto} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
@@ -2931,20 +2967,87 @@ function TripFormSheet({show,onClose,onSave,initialData}){
   const [startDate,setStartDate]=useState(""),[endDate,setEndDate]=useState("");
   const [paletteIdx,setPaletteIdx]=useState(0),[coverImage,setCoverImage]=useState(null);
   const [currency,setCurrency]=useState("TWD"),[err,setErr]=useState("");
+  const [tripType,setTripType]=useState("personal"); // "personal" | "shared"
+  const [inviteCode]=useState(()=>Math.random().toString(36).substring(2,8).toUpperCase());
+
   useEffect(()=>{
     if(show){
-      if(initialData){setName(initialData.name||"");setSubtitle(initialData.subtitle||"");setStartDate(initialData.startDate||"");setEndDate(initialData.endDate||"");setPaletteIdx(initialData.paletteIdx??0);setCoverImage(initialData.coverImage||null);setCurrency(initialData.currency||"TWD");}
-      else{setName("");setSubtitle("");setStartDate("");setEndDate("");setPaletteIdx(0);setCoverImage(null);setCurrency("TWD");}
+      if(initialData){setName(initialData.name||"");setSubtitle(initialData.subtitle||"");setStartDate(initialData.startDate||"");setEndDate(initialData.endDate||"");setPaletteIdx(initialData.paletteIdx??0);setCoverImage(initialData.coverImage||null);setCurrency(initialData.currency||"TWD");setTripType(initialData.type||"personal");}
+      else{setName("");setSubtitle("");setStartDate("");setEndDate("");setPaletteIdx(0);setCoverImage(null);setCurrency("TWD");setTripType("personal");}
       setErr("");
     }
   },[show,initialData]);
+
   const handleSave=()=>{
     if(!name.trim()){setErr("請輸入旅遊地點名稱");return;}
     if(!startDate){setErr("請選擇出發日期");return;}
     if(!endDate){setErr("請選擇回程日期");return;}
     if(parseLocalDate(startDate)>parseLocalDate(endDate)){setErr("回程日期必須晚於出發日期");return;}
-    onSave({name:name.trim(),subtitle:subtitle.trim()||`${name.trim()} 之旅`,startDate,endDate,paletteIdx,coverImage,currency});
+    onSave({name:name.trim(),subtitle:subtitle.trim()||`${name.trim()} 之旅`,startDate,endDate,paletteIdx,coverImage,currency,type:tripType,inviteCode:tripType==="shared"?(initialData?.inviteCode||inviteCode):null});
   };
+  if(!show) return null;
+  return(
+    <BottomSheet show={show} onClose={onClose} title={isEdit?"編輯旅程資訊":"新增旅遊地點"}>
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        {/* 旅程類型 */}
+        {!isEdit&&(
+          <div>
+            <label style={{fontSize:11,color:TEXT_L,display:"block",marginBottom:8,letterSpacing:"0.07em",textTransform:"uppercase"}}>旅程類型</label>
+            <div style={{display:"flex",gap:8}}>
+              {[{id:"personal",label:"個人旅程",desc:"只有自己看得到"},{id:"shared",label:"共享旅程",desc:"可邀請朋友加入"}].map(t=>(
+                <button key={t.id} onClick={()=>setTripType(t.id)}
+                  style={{flex:1,padding:"10px 8px",borderRadius:14,background:tripType===t.id?APP_BG:"transparent",border:`1.5px solid ${tripType===t.id?"#5E6870":BORDER}`,cursor:"pointer",fontFamily:"inherit",textAlign:"center"}}>
+                  <div style={{fontSize:12,fontWeight:600,color:tripType===t.id?TEXT_D:TEXT_L}}>{t.label}</div>
+                  <div style={{fontSize:10,color:TEXT_L,marginTop:2}}>{t.desc}</div>
+                </button>
+              ))}
+            </div>
+            {tripType==="shared"&&(
+              <div style={{marginTop:8,padding:"10px 14px",background:APP_BG,borderRadius:12,border:`1px solid ${BORDER}`}}>
+                <div style={{fontSize:10,color:TEXT_L,marginBottom:4}}>邀請碼（建立後分享給朋友）</div>
+                <div style={{fontSize:20,fontWeight:700,color:TEXT_D,letterSpacing:"0.15em"}}>{initialData?.inviteCode||inviteCode}</div>
+              </div>
+            )}
+          </div>
+        )}
+        <Field label="旅遊地點名稱 *" value={name} onChange={setName} placeholder="例如：Tokyo、Paris、Bali"/>
+        <Field label="副標題" value={subtitle} onChange={setSubtitle} placeholder="例如：日本東京 5 日遊"/>
+        <div style={{display:"flex",gap:12}}>
+          <div style={{flex:1}}>
+            <label style={{fontSize:11,color:TEXT_L,display:"block",marginBottom:5,letterSpacing:"0.07em",textTransform:"uppercase"}}>出發日期 *</label>
+            <input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)}
+              style={{width:"100%",padding:"11px 14px",border:`1.5px solid ${BORDER}`,borderRadius:14,background:APP_BG,fontFamily:"inherit",fontSize:14,color:startDate?TEXT_D:TEXT_L,outline:"none",boxSizing:"border-box",height:46,appearance:"none",WebkitAppearance:"none"}}/>
+          </div>
+          <div style={{flex:1}}>
+            <label style={{fontSize:11,color:TEXT_L,display:"block",marginBottom:5,letterSpacing:"0.07em",textTransform:"uppercase"}}>回程日期 *</label>
+            <input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)}
+              style={{width:"100%",padding:"11px 14px",border:`1.5px solid ${BORDER}`,borderRadius:14,background:APP_BG,fontFamily:"inherit",fontSize:14,color:endDate?TEXT_D:TEXT_L,outline:"none",boxSizing:"border-box",height:46,appearance:"none",WebkitAppearance:"none"}}/>
+          </div>
+        </div>
+        <div>
+          <label style={{fontSize:11,color:TEXT_L,display:"block",marginBottom:8,letterSpacing:"0.07em",textTransform:"uppercase"}}>主要幣別</label>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            {CURRENCIES.map(c=>(
+              <button key={c.code} onClick={()=>setCurrency(c.code)}
+                style={{padding:"7px 14px",borderRadius:20,background:currency===c.code?"#5E6870":APP_BG,border:`1.5px solid ${currency===c.code?"#5E6870":BORDER}`,color:currency===c.code?"#fff":TEXT_M,fontSize:12,cursor:"pointer",fontFamily:"inherit",transition:"all .15s"}}>
+                {c.symbol} {c.name}
+              </button>
+            ))}
+          </div>
+        </div>
+        <PalettePicker value={paletteIdx} onChange={setPaletteIdx}/>
+        <CoverImagePicker value={coverImage} onChange={setCoverImage}/>
+        {err&&<div style={{fontSize:12,color:"#B04A38",padding:"8px 12px",background:"#F8EEEC",borderRadius:10}}>{err}</div>}
+        <div style={{display:"flex",gap:12,marginTop:6}}>
+          <button onClick={onClose} style={{flex:1,padding:"13px 0",borderRadius:16,border:`1.5px solid ${BORDER}`,color:TEXT_M,fontSize:14,background:"none",cursor:"pointer",fontFamily:"inherit"}}>取消</button>
+          <button onClick={handleSave} style={{flex:1,padding:"13px 0",borderRadius:16,background:PALETTE[paletteIdx]?.bg||"#5E6870",color:"#fff",fontSize:14,fontWeight:600,border:"none",cursor:"pointer",fontFamily:"inherit"}}>
+            {isEdit?"儲存修改":"建立旅程"}
+          </button>
+        </div>
+      </div>
+    </BottomSheet>
+  );
+}
   if(!show) return null;
   return(
     <BottomSheet show={show} onClose={onClose} title={isEdit?"編輯旅程資訊":"新增旅遊地點"}>
@@ -2991,25 +3094,70 @@ function TripFormSheet({show,onClose,onSave,initialData}){
 // ─────────────────────────────────────────────────────────────
 // TripListPage
 // ─────────────────────────────────────────────────────────────
-function TripListPage({trips,prefs,onSelect,onAdd,onDelete,onEditTrip,onUpdatePrefs,onReorder}){
+function TripListPage({trips,prefs,onSelect,onAdd,onDelete,onEditTrip,onUpdatePrefs,onReorder,user,onSignOut,onJoinTrip}){
   const [delTarget,setDelTarget]=useState(null),[editTarget,setEditTarget]=useState(null),[showAdd,setShowAdd]=useState(false);
+  const [showJoin,setShowJoin]=useState(false);
+  const [joinCode,setJoinCode]=useState("");
+  const [joinError,setJoinError]=useState(null);
+  const [joinLoading,setJoinLoading]=useState(false);
   const today=new Date().toISOString().slice(0,10);
   const sorted=[...trips].sort((a,b)=>{
+    if((a.sortOrder??999)!==(b.sortOrder??999)) return (a.sortOrder??999)-(b.sortOrder??999);
     const aExp=(a.endDate||"9999")<today, bExp=(b.endDate||"9999")<today;
     if(aExp!==bExp) return aExp?1:-1;
     return (a.startDate||"").localeCompare(b.startDate||"");
   });
+
+  const handleJoin = async()=>{
+    if(!joinCode.trim()) return;
+    setJoinLoading(true); setJoinError(null);
+    const err = await onJoinTrip(joinCode);
+    setJoinLoading(false);
+    if(err) setJoinError(err);
+    else{ setShowJoin(false); setJoinCode(""); }
+  };
+
   return(
     <div style={{minHeight:"100vh",background:APP_BG,fontFamily:`'Noto Serif TC','PingFang TC',serif`}}>
-      <div style={{padding:"52px 24px 20px"}}>
+      <div style={{padding:"52px 24px 16px"}}>
+        {/* 使用者資訊列 */}
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            {user?.photoURL&&<img src={user.photoURL} alt="" style={{width:30,height:30,borderRadius:"50%",objectFit:"cover"}}/>}
+            <div style={{fontSize:11,color:TEXT_L}}>{user?.displayName||user?.email||""}</div>
+          </div>
+          <button onClick={onSignOut} style={{fontSize:11,color:TEXT_L,background:"none",border:`1px solid ${BORDER}`,borderRadius:10,padding:"4px 10px",cursor:"pointer",fontFamily:"inherit"}}>登出</button>
+        </div>
         <EditableTitle value={prefs.journalLabel} onChange={v=>onUpdatePrefs({...prefs,journalLabel:v})}
           outerStyle={{fontFamily:"Georgia,serif",fontSize:22,fontWeight:700,fontStyle:"italic",color:TEXT_M,marginBottom:2,letterSpacing:"0.01em"}}
           inputStyle={{fontFamily:"Georgia,serif",fontSize:22,fontWeight:700,fontStyle:"italic",color:TEXT_M}} placeholder="My Travel Journal"/>
         <EditableTitle value={prefs.pageTitle} onChange={v=>onUpdatePrefs({...prefs,pageTitle:v})}
           outerStyle={{fontFamily:"Georgia,serif",fontSize:14,fontWeight:700,fontStyle:"italic",color:TEXT_D}}
           inputStyle={{fontFamily:"Georgia,serif",fontSize:14,fontWeight:700,fontStyle:"italic"}} placeholder="Have a nice trip"/>
-        <div style={{fontSize:13,color:TEXT_M,marginTop:5}}>共 {trips.length} 段旅程</div>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginTop:5}}>
+          <div style={{fontSize:13,color:TEXT_M}}>共 {trips.length} 段旅程</div>
+          <button onClick={()=>setShowJoin(true)}
+            style={{fontSize:11,color:TEXT_M,background:"none",border:`1px solid ${BORDER}`,borderRadius:10,padding:"4px 10px",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:4}}>
+            <Icon name="plus" size={11} color={TEXT_M}/> 加入共享旅程
+          </button>
+        </div>
       </div>
+
+      {/* 加入共享旅程 Sheet */}
+      <BottomSheet show={showJoin} onClose={()=>{setShowJoin(false);setJoinCode("");setJoinError(null);}} title="加入共享旅程">
+        <div style={{display:"flex",flexDirection:"column",gap:12,paddingBottom:8}}>
+          <div style={{fontSize:13,color:TEXT_M}}>輸入朋友提供的邀請碼，加入後即可共同編輯旅程。</div>
+          <input value={joinCode} onChange={e=>setJoinCode(e.target.value.toUpperCase())}
+            placeholder="例如：ABC123"
+            style={{padding:"12px 16px",border:`1.5px solid ${BORDER}`,borderRadius:14,background:APP_BG,fontFamily:"inherit",fontSize:20,color:TEXT_D,outline:"none",letterSpacing:"0.15em",textAlign:"center"}}/>
+          {joinError&&<div style={{fontSize:12,color:"#B04A38",textAlign:"center"}}>{joinError}</div>}
+          <button onClick={handleJoin} disabled={joinLoading||!joinCode.trim()}
+            style={{width:"100%",padding:"13px 0",borderRadius:16,background:joinLoading||!joinCode.trim()?"#C0B4A8":"#2E2824",color:"#fff",fontSize:14,fontWeight:600,border:"none",cursor:"pointer",fontFamily:"inherit"}}>
+            {joinLoading?"加入中…":"加入旅程"}
+          </button>
+        </div>
+      </BottomSheet>
+
       <div style={{padding:"0 18px"}}>
         <SortableList items={sorted} onReorder={newOrder=>{
           const ids=newOrder.map(t=>t.id);
@@ -3018,11 +3166,15 @@ function TripListPage({trips,prefs,onSelect,onAdd,onDelete,onEditTrip,onUpdatePr
           const pal=PALETTE[trip.paletteIdx??0];
           const tot=trip.days.reduce((s,d)=>s+d.schedule.length,0);
           const expired=(trip.endDate||"9999")<today;
+          const isShared=trip.type==="shared";
           return(
             <div style={{marginBottom:14,borderRadius:24,overflow:"hidden",boxShadow:isActive?"0 10px 36px rgba(0,0,0,.2)":"0 4px 22px rgba(40,32,28,.13)",opacity:isActive?.9:1,filter:expired?"grayscale(0.3)":"none",transition:"opacity .15s"}}>
               <div onClick={()=>onSelect(trip.id)} style={{position:"relative",background:pal.bg,padding:"22px 22px 18px",cursor:"pointer",overflow:"hidden",minHeight:130}}>
                 {trip.coverImage&&<div style={{position:"absolute",inset:0}}><img src={trip.coverImage} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/><div style={{position:"absolute",inset:0,background:`linear-gradient(135deg,${pal.bg}E8 0%,${pal.bg}70 100%)`}}/></div>}
                 {expired&&<div style={{position:"absolute",top:12,left:14,background:"rgba(0,0,0,.32)",borderRadius:10,padding:"2px 8px",fontSize:9,color:"rgba(255,255,255,.8)",letterSpacing:"0.06em",zIndex:2}}>已結束</div>}
+                {isShared&&<div style={{position:"absolute",top:12,left:expired?60:14,background:"rgba(255,255,255,.25)",borderRadius:10,padding:"2px 8px",fontSize:9,color:"rgba(255,255,255,.95)",letterSpacing:"0.06em",zIndex:2,display:"flex",alignItems:"center",gap:3}}>
+                  <Icon name="users" size={9} color="rgba(255,255,255,.95)"/> 共享
+                </div>}
                 <button onClick={e=>{e.stopPropagation();setEditTarget(trip);}}
                   style={{position:"absolute",top:14,right:14,width:34,height:34,borderRadius:10,background:"rgba(255,255,255,.20)",border:"1.5px solid rgba(255,255,255,.35)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",zIndex:2}}>
                   <Icon name="pencil-sm" size={15} color={pal.fg} sw={1.8}/>
@@ -3114,7 +3266,7 @@ function TransitBar({from,fromUrl,to,toUrl,pal}){
   );
 }
 
-function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect,onAdd,onDelete,onEditTrip,listData,onUpdateListData}){
+function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect,onAdd,onDelete,onEditTrip,listData,onUpdateListData,user}){
   const pal=PALETTE[trip.paletteIdx??0];
   const [dayIdx,setDayIdx]=useState(0),[showAdd,setShowAdd]=useState(false);
   const [editIdx,setEditIdx]=useState(null),[form,setForm]=useState({title:"",time:"09:00",duration:"1 小時",location:"",locationUrl:"",content:"",images:[]});
@@ -3434,6 +3586,13 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
               <div style={{fontSize:11,color:"rgba(255,255,255,.70)",marginTop:2}}>{trip.startDate} → {trip.endDate}</div>
             </div>
           </div>
+          {trip.type==="shared"&&trip.inviteCode&&(
+            <button onClick={()=>{ navigator.clipboard?.writeText(trip.inviteCode); alert("邀請碼已複製："+trip.inviteCode); }}
+              style={{display:"flex",flexDirection:"column",alignItems:"center",background:"rgba(255,255,255,.18)",border:"none",borderRadius:14,padding:"6px 10px",cursor:"pointer",flexShrink:0,marginLeft:8}}>
+              <div style={{fontSize:9,color:"rgba(255,255,255,.7)"}}>邀請碼</div>
+              <div style={{fontSize:13,fontWeight:700,color:"#fff",letterSpacing:"0.1em"}}>{trip.inviteCode}</div>
+            </button>
+          )}
         </div>
       </div>
 
@@ -3579,44 +3738,145 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
 // ─────────────────────────────────────────────────────────────
 const STORAGE_KEY="TRAVEL_APP_V8_TRIPS", PREFS_KEY="TRAVEL_APP_V8_PREFS", LIST_KEY="TRAVEL_APP_V8_LIST";
 
+// ─── 登入頁面 ───
+function LoginPage(){
+  const [loading, setLoading] = useState(false);
+  const [error,   setError]   = useState(null);
+  const signIn = async()=>{
+    setLoading(true); setError(null);
+    try{
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(fbAuth, provider);
+    } catch(e){
+      setError("登入失敗，請再試一次");
+      setLoading(false);
+    }
+  };
+  return(
+    <div style={{minHeight:"100vh",background:"#EEECEA",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"40px 24px",fontFamily:"'Noto Serif TC',serif"}}>
+      <div style={{marginBottom:32,textAlign:"center"}}>
+        <div style={{fontFamily:"Georgia,serif",fontSize:28,fontWeight:700,fontStyle:"italic",color:"#6A6058",marginBottom:8}}>My Travel Journal</div>
+        <div style={{fontSize:13,color:"#A09890"}}>記錄每一段美好旅程</div>
+      </div>
+      <div style={{background:"#F8F7F5",borderRadius:24,padding:"32px 28px",width:"100%",maxWidth:360,boxShadow:"0 8px 32px rgba(0,0,0,.08)"}}>
+        <div style={{fontSize:15,fontWeight:600,color:"#2E2824",marginBottom:8,textAlign:"center"}}>歡迎使用</div>
+        <div style={{fontSize:12,color:"#A09890",marginBottom:24,textAlign:"center"}}>登入後即可建立和管理你的旅遊行程</div>
+        <button onClick={signIn} disabled={loading}
+          style={{width:"100%",padding:"13px 0",borderRadius:16,background:loading?"#C0B4A8":"#2E2824",color:"#fff",fontSize:14,fontWeight:600,border:"none",cursor:loading?"default":"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:10,transition:"all .2s"}}>
+          {loading ? "登入中…" : <>
+            <svg width="18" height="18" viewBox="0 0 24 24"><path fill="#fff" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#ddd" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#ccc" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#fff" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+            使用 Google 登入
+          </>}
+        </button>
+        {error&&<div style={{fontSize:11,color:"#B04A38",textAlign:"center",marginTop:12}}>{error}</div>}
+      </div>
+      <div style={{fontSize:11,color:"#A09890",marginTop:24,textAlign:"center",maxWidth:280}}>
+        登入即表示你同意我們使用你的 Google 帳號資訊來建立個人旅遊記錄
+      </div>
+    </div>
+  );
+}
+
 export default function App(){
+export default function App(){
+  const [user,    setUser]    = useState(undefined); // undefined=loading, null=logged out
+  const [trips,   setTrips]   = useState([]);
+  const [prefs,   setPrefs]   = useState({...DEFAULT_PREFS});
+  const [listData,setListData]= useState({});
+  const [currentId,setCurrentId]= useState(null);
+  const [syncing, setSyncing] = useState(false);
+
   // 防止 iOS input focus 時頁面放大
   useEffect(()=>{
-    const meta = document.querySelector("meta[name=viewport]");
-    if(meta){
-      meta.content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no";
-    } else {
-      const m=document.createElement("meta");
-      m.name="viewport";
-      m.content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no";
-      document.head.appendChild(m);
-    }
+    const meta=document.querySelector("meta[name=viewport]");
+    if(meta) meta.content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no";
+    else{ const m=document.createElement("meta"); m.name="viewport"; m.content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"; document.head.appendChild(m); }
   },[]);
-  const [trips,setTrips]=useState(()=>{try{const s=localStorage.getItem(STORAGE_KEY);return s?JSON.parse(s):buildDefaultTrips();}catch{return buildDefaultTrips();}});
-  const [prefs,setPrefs]=useState(()=>{try{const s=localStorage.getItem(PREFS_KEY);return s?JSON.parse(s):{...DEFAULT_PREFS};}catch{return {...DEFAULT_PREFS};}});
-  const [listData,setListData]=useState(()=>{try{const s=localStorage.getItem(LIST_KEY);return s?JSON.parse(s):{};}catch{return {};}});
-  const [currentId,setCurrentId]=useState(null);
+
+  // Firebase Auth 狀態監聽
   useEffect(()=>{
-    try{
-      localStorage.setItem(STORAGE_KEY,JSON.stringify(trips));
-    } catch(e) {
-      if(e.name==="QuotaExceededError") console.warn("localStorage 已滿，圖片可能無法儲存");
-    }
-  },[trips]);
-  useEffect(()=>{try{localStorage.setItem(PREFS_KEY,JSON.stringify(prefs));}catch{}},[prefs]);
+    const unsub = onAuthStateChanged(fbAuth, u=>{ setUser(u||null); });
+    return unsub;
+  },[]);
+
+  // 登入後從 Firestore 讀取資料
   useEffect(()=>{
-    try{
-      localStorage.setItem(LIST_KEY,JSON.stringify(listData));
-    } catch(e) {
-      if(e.name==="QuotaExceededError") console.warn("localStorage 已滿");
-    }
+    if(!user) return;
+    setSyncing(true);
+
+    // 監聽個人旅程
+    const tripsQ = query(collection(fbDb,"trips"), where("members","array-contains",user.uid));
+    const unsubTrips = onSnapshot(tripsQ, snap=>{
+      const data = snap.docs.map(d=>({...d.data(), _docId:d.id}));
+      setTrips(data);
+      setSyncing(false);
+    }, ()=>setSyncing(false));
+
+    // 讀取偏好設定
+    getDoc(doc(fbDb,"users",user.uid)).then(d=>{
+      if(d.exists()) setPrefs(d.data().prefs||{...DEFAULT_PREFS});
+    });
+
+    // 讀取清單資料
+    getDoc(doc(fbDb,"listData",user.uid)).then(d=>{
+      if(d.exists()) setListData(d.data()||{});
+    });
+
+    return ()=>{ unsubTrips(); };
+  },[user]);
+
+  // 存偏好到 Firestore
+  useEffect(()=>{
+    if(!user) return;
+    setDoc(doc(fbDb,"users",user.uid),{prefs},{merge:true}).catch(()=>{});
+  },[prefs]);
+
+  // 存清單資料到 Firestore（debounce）
+  const listSaveTimer = useRef(null);
+  useEffect(()=>{
+    if(!user) return;
+    clearTimeout(listSaveTimer.current);
+    listSaveTimer.current = setTimeout(()=>{
+      setDoc(doc(fbDb,"listData",user.uid), listData, {merge:true}).catch(()=>{});
+    },1000);
   },[listData]);
-  useEffect(()=>{try{localStorage.setItem(LIST_KEY,JSON.stringify(listData));}catch{}},[listData]);
-  const cur=trips.find(t=>t.id===currentId)||null;
-  const handleAdd=data=>{const t={id:genId(),...data,companions:[],expenses:[],bookmarks:[],flights:[],days:generateDays(data.startDate,data.endDate)};setTrips(p=>[...p,t]);setCurrentId(t.id);};
-  const handleEdit=(id,data)=>setTrips(p=>p.map(t=>t.id!==id?t:{...t,...data,days:generateDays(data.startDate,data.endDate,t.days)}));
-  const handleUpdate=u=>setTrips(p=>p.map(t=>t.id===u.id?u:t));
-  const handleDelete=id=>{setTrips(p=>p.filter(t=>t.id!==id));if(currentId===id)setCurrentId(null);};
+
+  const handleAdd = async data=>{
+    if(!user) return;
+    const t = {id:genId(),...data,companions:[],expenses:[],bookmarks:[],flights:[],days:generateDays(data.startDate,data.endDate),ownerId:user.uid,members:[user.uid],type:"personal",inviteCode:null,createdAt:Date.now()};
+    const ref = await addDoc(collection(fbDb,"trips"), t);
+    setCurrentId(t.id);
+  };
+
+  const handleEdit = async(id,data)=>{
+    const t = trips.find(x=>x.id===id); if(!t||!t._docId) return;
+    const updated = {...t,...data,days:generateDays(data.startDate,data.endDate,t.days)};
+    await updateDoc(doc(fbDb,"trips",t._docId), updated).catch(()=>{});
+  };
+
+  const handleUpdate = async u=>{
+    if(!u._docId) return;
+    await updateDoc(doc(fbDb,"trips",u._docId), u).catch(()=>{});
+  };
+
+  const handleDelete = async id=>{
+    const t = trips.find(x=>x.id===id); if(!t||!t._docId) return;
+    await deleteDoc(doc(fbDb,"trips",t._docId)).catch(()=>{});
+    if(currentId===id) setCurrentId(null);
+  };
+
+  const cur = trips.find(t=>t.id===currentId)||null;
+
+  // Loading
+  if(user===undefined) return(
+    <div style={{minHeight:"100vh",background:"#EEECEA",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{fontSize:13,color:"#A09890"}}>載入中…</div>
+    </div>
+  );
+
+  // 未登入 → 顯示登入頁
+  if(!user) return <LoginPage/>;
+
   return(
     <div style={{maxWidth:430,margin:"0 auto",minHeight:"100vh"}}>
       <style>{`
@@ -3633,14 +3893,38 @@ export default function App(){
         .ev-row:nth-child(3){animation-delay:.12s}
         .ev-row:nth-child(4){animation-delay:.16s}
         .ev-row:nth-child(5){animation-delay:.20s}
-        .ev-row:hover .ev-actions{opacity:1!important;}
       `}</style>
       {cur
         ?<TripDetailPage trip={cur} onBack={()=>setCurrentId(null)} onUpdate={handleUpdate}
             trips={trips} prefs={prefs} onUpdatePrefs={setPrefs}
             onSelect={setCurrentId} onAdd={handleAdd} onDelete={handleDelete} onEditTrip={handleEdit}
-            listData={listData} onUpdateListData={setListData}/>
-        :<TripListPage trips={trips} prefs={prefs} onSelect={setCurrentId} onAdd={handleAdd} onDelete={handleDelete} onEditTrip={handleEdit} onUpdatePrefs={setPrefs} onReorder={setTrips}/>
+            listData={listData} onUpdateListData={setListData}
+            user={user}/>
+        :<TripListPage trips={trips} prefs={prefs} onSelect={setCurrentId} onAdd={handleAdd}
+            onDelete={handleDelete} onEditTrip={handleEdit} onUpdatePrefs={setPrefs}
+            onReorder={newOrder=>{
+              // 更新排序：逐一更新 Firestore（順序存在各自 trip 的 sortOrder 欄位）
+              newOrder.forEach((t,i)=>{
+                if(t._docId) updateDoc(doc(fbDb,"trips",t._docId),{sortOrder:i}).catch(()=>{});
+              });
+              setTrips(newOrder);
+            }}
+            user={user} onSignOut={()=>signOut(fbAuth)}
+            onJoinTrip={async(code)=>{
+              try{
+                const {getDocs}=await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
+                const q=query(collection(fbDb,"trips"),where("inviteCode","==",code.trim().toUpperCase()));
+                const snap=await getDocs(q);
+                if(snap.empty) return "找不到此邀請碼，請確認後再試";
+                const tripDoc=snap.docs[0];
+                const td=tripDoc.data();
+                if(td.members?.includes(user.uid)) return "你已經在這個旅程了";
+                await updateDoc(doc(fbDb,"trips",tripDoc.id),{members:[...(td.members||[]),user.uid],type:"shared"});
+                return null;
+              } catch(e){
+                return "加入失敗，請稍後再試";
+              }
+            }}/>
       }
     </div>
   );
