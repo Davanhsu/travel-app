@@ -3312,19 +3312,22 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
 
   // 讀取成員資料
   useEffect(()=>{
-    if(!trip.members||trip.members.length<=1) return;
+    if(!trip.members||trip.members.length===0) return;
     const fetchMembers = async()=>{
       try{
         const profiles = await Promise.all(
           trip.members.map(uid=>
-            getDoc(doc(fbDb,"users",uid)).then(d=>({uid,...(d.data()?.profile||{})}))
+            getDoc(doc(fbDb,"users",uid)).then(d=>{
+              const p=d.data()?.profile||{};
+              return {uid, displayName:p.displayName||"", photoURL:p.photoURL||"", email:p.email||""};
+            }).catch(()=>({uid, displayName:"", photoURL:"", email:""}))
           )
         );
-        setMemberProfiles(profiles);
-      } catch{}
+        setMemberProfiles(profiles.filter(p=>p.uid));
+      } catch(e){ console.warn("fetchMembers error",e); }
     };
     fetchMembers();
-  },[trip.members?.join(",")]);
+  },[JSON.stringify(trip.members)]);
 
   // 儲存個人 profile 到 Firestore
   useEffect(()=>{
@@ -3649,19 +3652,20 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
           <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
             {/* 成員頭像（共享旅程）*/}
             {trip.type==="shared"&&memberProfiles.length>0&&(
-              <div style={{display:"flex"}}>
+              <div style={{display:"flex",alignItems:"center"}}>
                 {memberProfiles.slice(0,4).map((m,i)=>(
-                  <div key={m.uid} style={{width:24,height:24,borderRadius:"50%",border:"2px solid rgba(255,255,255,.5)",marginLeft:i===0?0:-8,overflow:"hidden",background:pal.bg}}>
+                  <div key={m.uid} title={m.displayName||m.email||m.uid}
+                    style={{width:26,height:26,borderRadius:"50%",border:"2px solid rgba(255,255,255,.6)",marginLeft:i===0?0:-8,overflow:"hidden",background:pal.bg,flexShrink:0,zIndex:4-i}}>
                     {m.photoURL
                       ? <img src={m.photoURL} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-                      : <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"#fff",fontWeight:700}}>
+                      : <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:"#fff",fontWeight:700}}>
                           {(m.displayName||m.email||"?")[0].toUpperCase()}
                         </div>
                     }
                   </div>
                 ))}
                 {memberProfiles.length>4&&(
-                  <div style={{width:24,height:24,borderRadius:"50%",border:"2px solid rgba(255,255,255,.5)",marginLeft:-8,background:"rgba(0,0,0,.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,color:"#fff"}}>
+                  <div style={{width:26,height:26,borderRadius:"50%",border:"2px solid rgba(255,255,255,.6)",marginLeft:-8,background:"rgba(0,0,0,.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"#fff"}}>
                     +{memberProfiles.length-4}
                   </div>
                 )}
