@@ -314,31 +314,32 @@ const ITEM_H_SM = 36;
 
 function WheelColumnSm({items, value, onChange}){
   const ref = useRef();
-  const tripled = [...items,...items,...items]; // 三倍陣列實現無限循環
-  const offset  = items.length; // 中間段起點
+  const LEN = items.length;
+  const tripled = [...items,...items,...items];
 
+  // 初始定位到中間段
   useEffect(()=>{
     const idx = items.indexOf(value);
     if(ref.current && idx >= 0){
-      // 滾到中間段的對應位置
-      ref.current.scrollTop = (offset + idx) * ITEM_H_SM;
+      ref.current.scrollTop = (LEN + idx) * ITEM_H_SM;
     }
-  }, [value]);
+  },[value]);
 
   const onScroll = ()=>{
     if(!ref.current) return;
-    const raw = ref.current.scrollTop;
-    let idx = Math.round(raw / ITEM_H_SM);
-    // 循環：滾到邊界時回到中間段
-    if(idx < items.length/2){
-      idx += items.length;
-      ref.current.scrollTop = idx * ITEM_H_SM;
-    } else if(idx >= items.length * 2.5){
-      idx -= items.length;
-      ref.current.scrollTop = idx * ITEM_H_SM;
+    const scrollTop = ref.current.scrollTop;
+    const idx = Math.round(scrollTop / ITEM_H_SM);
+    // 無限循環：到邊界時跳回中間段
+    if(idx < LEN * 0.5){
+      ref.current.scrollTop = (idx + LEN) * ITEM_H_SM;
+      return;
     }
-    const v = items[idx % items.length];
-    if(v !== value) onChange(v);
+    if(idx >= LEN * 2.5){
+      ref.current.scrollTop = (idx - LEN) * ITEM_H_SM;
+      return;
+    }
+    const v = items[idx % LEN];
+    if(v && v !== value) onChange(v);
   };
 
   return (
@@ -3400,7 +3401,13 @@ function TripExportView({trip, pal, onClose}){
   };
 
   const handlePrint=()=>{
-    setTimeout(()=>window.print(),100);
+    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+    if(isSafari){
+      // Safari 不支援 window.print() 在 PWA，改用開啟預覽
+      handleSave();
+    } else {
+      setTimeout(()=>window.print(), 100);
+    }
   };
 
   return(
