@@ -3732,6 +3732,7 @@ function LoginPage(){
     setLoading(true); setError(null);
     try{
       const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({prompt:"select_account"});
       await signInWithPopup(fbAuth, provider);
     } catch(e){
       setError("登入失敗，請再試一次");
