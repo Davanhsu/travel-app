@@ -313,54 +313,104 @@ function TimePicker({value,onChange}){
 const ITEM_H_SM = 36;
 
 function WheelColumnSm({items, value, onChange}){
-  const ref    = useRef();
-  const LEN    = items.length;
-  const tripled= [...items,...items,...items];
-  const timer  = useRef(null);
+  const LEN = items.length;
+  const [offset, setOffset] = useState(()=> -items.indexOf(value) * ITEM_H_SM);
+  const drag = useRef({active:false, startY:0, startOffset:0});
 
-  // 定位到中間段
+  // value 從外部改變時同步
   useEffect(()=>{
     const idx = items.indexOf(value);
-    if(ref.current && idx >= 0){
-      ref.current.scrollTop = (LEN + idx) * ITEM_H_SM;
-    }
+    if(idx>=0) setOffset(-idx * ITEM_H_SM);
   },[value, items]);
 
-  const commit = ()=>{
-    if(!ref.current) return;
-    const scrollTop = ref.current.scrollTop;
-    const rawIdx    = scrollTop / ITEM_H_SM;
-    const idx       = Math.round(rawIdx);
-    // 無限循環邊界處理
-    if(idx < Math.round(LEN * 0.5)){
-      ref.current.scrollTop = (idx + LEN) * ITEM_H_SM;
-      return;
-    }
-    if(idx >= Math.round(LEN * 2.5)){
-      ref.current.scrollTop = (idx - LEN) * ITEM_H_SM;
-      return;
-    }
-    const v = items[((idx % LEN) + LEN) % LEN];
+  const clampAndCommit = (raw)=>{
+    // 循環取模
+    const total = LEN * ITEM_H_SM;
+    let o = ((raw % total) + total) % total;
+    if(o > total/2) o -= total;
+    // snap 到最近格
+    const snapped = Math.round(o / ITEM_H_SM) * ITEM_H_SM;
+    setOffset(snapped);
+    const idx = ((-Math.round(snapped / ITEM_H_SM)) % LEN + LEN) % LEN;
+    const v = items[idx];
     if(v && v !== value) onChange(v);
+    return snapped;
   };
 
-  const onScroll = ()=>{
-    clearTimeout(timer.current);
-    timer.current = setTimeout(commit, 80);
+  const onTouchStart = e=>{
+    drag.current = {active:true, startY:e.touches[0].clientY, startOffset:offset};
+  };
+  const onTouchMove = e=>{
+    if(!drag.current.active) return;
+    e.preventDefault();
+    const dy = e.touches[0].clientY - drag.current.startY;
+    const raw = drag.current.startOffset + dy;
+    const total = LEN * ITEM_H_SM;
+    let o = ((raw % total) + total) % total;
+    if(o > total/2) o -= total;
+    setOffset(o);
+  };
+  const onTouchEnd = ()=>{
+    drag.current.active = false;
+    clampAndCommit(offset);
   };
 
-  return (
-    <div style={{flex:1,position:"relative",height:ITEM_H_SM*3,overflow:"hidden"}}>
-      <div style={{position:"absolute",top:0,left:0,right:0,height:ITEM_H_SM,background:`linear-gradient(to bottom,${APP_BG} 40%,transparent)`,zIndex:2,pointerEvents:"none"}}/>
-      <div style={{position:"absolute",bottom:0,left:0,right:0,height:ITEM_H_SM,background:`linear-gradient(to top,${APP_BG} 40%,transparent)`,zIndex:2,pointerEvents:"none"}}/>
+  // 滑鼠支援（桌面）
+  const onMouseDown = e=>{
+    drag.current = {active:true, startY:e.clientY, startOffset:offset};
+    const onMove = e2=>{
+      const dy = e2.clientY - drag.current.startY;
+      const raw = drag.current.startOffset + dy;
+      const total = LEN * ITEM_H_SM;
+      let o = ((raw % total) + total) % total;
+      if(o > total/2) o -= total;
+      setOffset(o);
+    };
+    const onUp = ()=>{
+      drag.current.active = false;
+      clampAndCommit(offset);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
+
+  // 計算每個項目的 y 位置（居中顯示）
+  const centerY = ITEM_H_SM;
+  const visibleRange = 3;
+
+  return(
+    <div style={{flex:1,position:"relative",height:ITEM_H_SM*3,overflow:"hidden",cursor:"grab",userSelect:"none",WebkitUserSelect:"none"}}
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+      onMouseDown={onMouseDown}>
+      <div style={{position:"absolute",top:0,left:0,right:0,height:ITEM_H_SM,background:`linear-gradient(to bottom,${APP_BG} 50%,transparent)`,zIndex:2,pointerEvents:"none"}}/>
+      <div style={{position:"absolute",bottom:0,left:0,right:0,height:ITEM_H_SM,background:`linear-gradient(to top,${APP_BG} 50%,transparent)`,zIndex:2,pointerEvents:"none"}}/>
       <div style={{position:"absolute",top:ITEM_H_SM,left:4,right:4,height:ITEM_H_SM,borderTop:`1.5px solid ${BORDER}`,borderBottom:`1.5px solid ${BORDER}`,zIndex:3,pointerEvents:"none"}}/>
-      <div ref={ref} onScroll={onScroll}
-        style={{height:"100%",overflowY:"scroll",scrollSnapType:"y mandatory",scrollbarWidth:"none",WebkitOverflowScrolling:"touch"}}>
-        {tripled.map((item,i)=>(
-          <div key={i} style={{height:ITEM_H_SM,display:"flex",alignItems:"center",justifyContent:"center",scrollSnapAlign:"center",fontFamily:"Georgia,serif",fontSize:17,fontWeight:item===value?700:400,color:item===value?TEXT_D:TEXT_L,userSelect:"none"}}>
-            {item}
-          </div>
-        ))}
+      <div style={{position:"absolute",inset:0}}>
+        {Array.from({length:visibleRange*2+1},(_,i)=>i-visibleRange).map(rel=>{
+          const rawIdx = -Math.round(offset/ITEM_H_SM) + rel;
+          const idx = ((rawIdx % LEN) + LEN) % LEN;
+          const y = centerY + rel*ITEM_H_SM + (offset - Math.round(offset/ITEM_H_SM)*ITEM_H_SM);
+          const isSelected = rel===0;
+          return(
+            <div key={rel} style={{
+              position:"absolute",left:0,right:0,
+              top:y,
+              height:ITEM_H_SM,
+              display:"flex",alignItems:"center",justifyContent:"center",
+              fontFamily:"Georgia,serif",
+              fontSize: isSelected?18:15,
+              fontWeight: isSelected?700:400,
+              color: isSelected?TEXT_D:TEXT_L,
+              transition:"font-size .1s,color .1s",
+            }}>
+              {items[idx]}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
