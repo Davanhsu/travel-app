@@ -3247,7 +3247,7 @@ function InviteCodeButton({code}){
         </svg>
       </button>
       {show&&(
-        <div style={{position:"absolute",top:42,right:0,background:"rgba(0,0,0,.75)",borderRadius:12,padding:"8px 12px",whiteSpace:"nowrap",zIndex:100}}>
+        <div style={{position:"absolute",bottom:42,right:0,background:"rgba(0,0,0,.75)",borderRadius:12,padding:"8px 12px",whiteSpace:"nowrap",zIndex:100}}>
           <div style={{fontSize:9,color:"rgba(255,255,255,.6)",marginBottom:3,textAlign:"center"}}>{copied?"已複製！":"點擊複製"}</div>
           <div style={{fontSize:16,fontWeight:700,color:"#fff",letterSpacing:"0.15em"}}>{code}</div>
         </div>
