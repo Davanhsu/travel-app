@@ -316,97 +316,92 @@ function WheelColumnSm({items, value, onChange}){
   const LEN = items.length;
   const [offset, setOffset] = useState(()=> -items.indexOf(value) * ITEM_H_SM);
   const drag = useRef({active:false, startY:0, startOffset:0});
+  const containerRef = useRef();
+  const offsetRef = useRef(offset);
 
-  // value 從外部改變時同步
+  useEffect(()=>{ offsetRef.current = offset; },[offset]);
+
   useEffect(()=>{
     const idx = items.indexOf(value);
-    if(idx>=0) setOffset(-idx * ITEM_H_SM);
+    if(idx>=0){ const o = -idx * ITEM_H_SM; setOffset(o); offsetRef.current=o; }
   },[value, items]);
 
   const clampAndCommit = (raw)=>{
-    // 循環取模
     const total = LEN * ITEM_H_SM;
     let o = ((raw % total) + total) % total;
     if(o > total/2) o -= total;
-    // snap 到最近格
     const snapped = Math.round(o / ITEM_H_SM) * ITEM_H_SM;
-    setOffset(snapped);
+    setOffset(snapped); offsetRef.current=snapped;
     const idx = ((-Math.round(snapped / ITEM_H_SM)) % LEN + LEN) % LEN;
     const v = items[idx];
     if(v && v !== value) onChange(v);
-    return snapped;
   };
 
-  const onTouchStart = e=>{
-    drag.current = {active:true, startY:e.touches[0].clientY, startOffset:offset};
-  };
-  const onTouchMove = e=>{
-    if(!drag.current.active) return;
-    e.preventDefault();
-    const dy = e.touches[0].clientY - drag.current.startY;
-    const raw = drag.current.startOffset + dy;
-    const total = LEN * ITEM_H_SM;
-    let o = ((raw % total) + total) % total;
-    if(o > total/2) o -= total;
-    setOffset(o);
-  };
-  const onTouchEnd = ()=>{
-    drag.current.active = false;
-    clampAndCommit(offset);
-  };
+  // passive:false 才能 preventDefault
+  useEffect(()=>{
+    const el = containerRef.current;
+    if(!el) return;
+    const onStart = e=>{
+      drag.current = {active:true, startY:e.touches[0].clientY, startOffset:offsetRef.current};
+    };
+    const onMove = e=>{
+      if(!drag.current.active) return;
+      e.preventDefault(); // 阻止頁面滾動
+      const dy = e.touches[0].clientY - drag.current.startY;
+      const raw = drag.current.startOffset + dy;
+      const total = LEN * ITEM_H_SM;
+      let o = ((raw % total) + total) % total;
+      if(o > total/2) o -= total;
+      setOffset(o); offsetRef.current=o;
+    };
+    const onEnd = ()=>{
+      drag.current.active = false;
+      clampAndCommit(offsetRef.current);
+    };
+    el.addEventListener("touchstart", onStart, {passive:true});
+    el.addEventListener("touchmove",  onMove,  {passive:false});
+    el.addEventListener("touchend",   onEnd,   {passive:true});
+    return ()=>{
+      el.removeEventListener("touchstart", onStart);
+      el.removeEventListener("touchmove",  onMove);
+      el.removeEventListener("touchend",   onEnd);
+    };
+  },[items, value]);
 
-  // 滑鼠支援（桌面）
   const onMouseDown = e=>{
-    drag.current = {active:true, startY:e.clientY, startOffset:offset};
+    drag.current = {active:true, startY:e.clientY, startOffset:offsetRef.current};
     const onMove = e2=>{
       const dy = e2.clientY - drag.current.startY;
       const raw = drag.current.startOffset + dy;
       const total = LEN * ITEM_H_SM;
       let o = ((raw % total) + total) % total;
       if(o > total/2) o -= total;
-      setOffset(o);
+      setOffset(o); offsetRef.current=o;
     };
     const onUp = ()=>{
       drag.current.active = false;
-      clampAndCommit(offset);
+      clampAndCommit(offsetRef.current);
       window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("mouseup",   onUp);
     };
     window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    window.addEventListener("mouseup",   onUp);
   };
 
-  // 計算每個項目的 y 位置（居中顯示）
-  const centerY = ITEM_H_SM;
-  const visibleRange = 3;
-
   return(
-    <div style={{flex:1,position:"relative",height:ITEM_H_SM*3,overflow:"hidden",cursor:"grab",userSelect:"none",WebkitUserSelect:"none"}}
-      onTouchStart={onTouchStart}
-      onTouchMove={onTouchMove}
-      onTouchEnd={onTouchEnd}
+    <div ref={containerRef} style={{flex:1,position:"relative",height:ITEM_H_SM*3,overflow:"hidden",cursor:"grab",userSelect:"none",WebkitUserSelect:"none",touchAction:"none"}}
       onMouseDown={onMouseDown}>
       <div style={{position:"absolute",top:0,left:0,right:0,height:ITEM_H_SM,background:`linear-gradient(to bottom,${APP_BG} 50%,transparent)`,zIndex:2,pointerEvents:"none"}}/>
       <div style={{position:"absolute",bottom:0,left:0,right:0,height:ITEM_H_SM,background:`linear-gradient(to top,${APP_BG} 50%,transparent)`,zIndex:2,pointerEvents:"none"}}/>
       <div style={{position:"absolute",top:ITEM_H_SM,left:4,right:4,height:ITEM_H_SM,borderTop:`1.5px solid ${BORDER}`,borderBottom:`1.5px solid ${BORDER}`,zIndex:3,pointerEvents:"none"}}/>
       <div style={{position:"absolute",inset:0}}>
-        {Array.from({length:visibleRange*2+1},(_,i)=>i-visibleRange).map(rel=>{
-          const rawIdx = -Math.round(offset/ITEM_H_SM) + rel;
+        {Array.from({length:7},(_,i)=>i-3).map(rel=>{
+          const rawIdx = -Math.round(offsetRef.current/ITEM_H_SM) + rel;
           const idx = ((rawIdx % LEN) + LEN) % LEN;
-          const y = centerY + rel*ITEM_H_SM + (offset - Math.round(offset/ITEM_H_SM)*ITEM_H_SM);
-          const isSelected = rel===0;
+          const y = ITEM_H_SM + rel*ITEM_H_SM + (offset - Math.round(offset/ITEM_H_SM)*ITEM_H_SM);
+          const isSel = rel===0;
           return(
-            <div key={rel} style={{
-              position:"absolute",left:0,right:0,
-              top:y,
-              height:ITEM_H_SM,
-              display:"flex",alignItems:"center",justifyContent:"center",
-              fontFamily:"Georgia,serif",
-              fontSize: isSelected?18:15,
-              fontWeight: isSelected?700:400,
-              color: isSelected?TEXT_D:TEXT_L,
-              transition:"font-size .1s,color .1s",
-            }}>
+            <div key={rel} style={{position:"absolute",left:0,right:0,top:y,height:ITEM_H_SM,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"Georgia,serif",fontSize:isSel?18:15,fontWeight:isSel?700:400,color:isSel?TEXT_D:TEXT_L,transition:"font-size .1s,color .1s"}}>
               {items[idx]}
             </div>
           );
