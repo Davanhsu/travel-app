@@ -3654,7 +3654,11 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
   const [activeTab,setActiveTab]=useState("calendar");
   const [delTarget,setDelTarget]=useState(null);
   const [showFlightPanel,setShowFlightPanel]=useState(false);
-  const [showExport,setShowExport]=useState(!!initialExport);
+  const [showExport,setShowExport]=useState(false);
+
+  useEffect(()=>{
+    if(initialExport) setShowExport(true);
+  },[initialExport]);
   const [showLeaveConfirm,setShowLeaveConfirm]=useState(false);
   const [memberProfiles,setMemberProfiles]=useState([]); // [{uid,displayName,photoURL}]
 
@@ -4290,6 +4294,11 @@ function AppInner(){
   const [listData,setListData]= useState({});
   const [currentId,setCurrentId]= useState(null);
   const [exportId, setExportId] = useState(null);
+
+  const goExport = useCallback((id)=>{
+    setExportId(id);
+    setCurrentId(id);
+  },[]);
   const [syncing, setSyncing] = useState(false);
 
   // 防止 iOS input focus 時頁面放大
@@ -4425,7 +4434,7 @@ function AppInner(){
               setTrips(newOrder);
             }}
             user={user} onSignOut={()=>signOut(fbAuth)}
-            onExport={id=>{ setCurrentId(id); setTimeout(()=>setExportId(id),50); }}
+            onExport={goExport}
             onJoinTrip={async(code)=>{
               try{
                 const q=query(collection(fbDb,"trips"),where("inviteCode","==",code.trim().toUpperCase()));
