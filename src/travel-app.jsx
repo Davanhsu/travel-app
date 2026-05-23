@@ -33,7 +33,7 @@ const Icon = ({ name, size=22, color="currentColor", sw=1.5 }) => {
     map:           <svg style={s} viewBox="0 0 24 24"><path d="M9 4L3 7v14l6-3 6 3 6-3V4l-6 3-6-3z" {...p}/><path d="M9 4v14M15 7v14" {...p}/></svg>,
     wallet:        <svg style={s} viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="14" rx="2" {...p}/><path d="M2 10h20" {...p}/><circle cx="17" cy="15" r="1.5" {...p}/><path d="M6 3l14 3" {...p}/></svg>,
     bookmark:      <svg style={s} viewBox="0 0 24 24"><path d="M5 3h14a1 1 0 011 1v17l-8-4-8 4V4a1 1 0 011-1z" {...p}/></svg>,
-    plus:          <svg style={s} viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" {...p}/></svg>,
+    copy:          <svg style={s} viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" {...p}/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" {...p}/></svg>,
     "pencil-sm":   <svg style={s} viewBox="0 0 24 24"><path d="M15.232 5.232l3.536 3.536M9 13l6.5-6.5a2.121 2.121 0 013 3L12 16H9v-3z" {...p}/></svg>,
     trash:         <svg style={s} viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" {...p}/><path d="M10 11v6M14 11v6" {...p}/></svg>,
     "chevron-left":<svg style={s} viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6" {...p}/></svg>,
@@ -3070,7 +3070,7 @@ function TripFormSheet({show,onClose,onSave,initialData}){
 // TripListPage
 // ─────────────────────────────────────────────────────────────
 function TripListPage({trips,prefs,onSelect,onAdd,onDelete,onEditTrip,onUpdatePrefs,onReorder,user,onSignOut,onJoinTrip}){
-  const [delTarget,setDelTarget]=useState(null),[editTarget,setEditTarget]=useState(null),[showAdd,setShowAdd]=useState(false);
+  const [showInviteConfirm,setShowInviteConfirm]=useState(null); // 存剛建立的邀請碼
   const [showJoin,setShowJoin]=useState(false);
   const [joinCode,setJoinCode]=useState("");
   const [joinError,setJoinError]=useState(null);
@@ -3194,7 +3194,31 @@ function TripListPage({trips,prefs,onSelect,onAdd,onDelete,onEditTrip,onUpdatePr
       <Dialog show={!!delTarget} icon={<Icon name="trash" size={28}/>} title="刪除這段旅程？" desc="刪除後將無法復原，所有行程資料也會一併清除。"
         onConfirm={()=>{onDelete(delTarget);setDelTarget(null);}} onCancel={()=>setDelTarget(null)} confirmLabel="確認刪除" danger/>
       <TripFormSheet show={!!editTarget} onClose={()=>setEditTarget(null)} initialData={editTarget} onSave={data=>{onEditTrip(editTarget.id,data);setEditTarget(null);}}/>
-      <TripFormSheet show={showAdd} onClose={()=>setShowAdd(false)} initialData={null} onSave={data=>{onAdd(data);setShowAdd(false);}}/>
+      <TripFormSheet show={showAdd} onClose={()=>setShowAdd(false)} initialData={null} onSave={data=>{
+        onAdd(data);
+        setShowAdd(false);
+        if(data.type==="shared"&&data.inviteCode) setShowInviteConfirm(data.inviteCode);
+      }}/>
+
+      {/* 共享旅程建立成功 — 邀請碼確認 */}
+      <BottomSheet show={!!showInviteConfirm} onClose={()=>setShowInviteConfirm(null)} title="共享旅程已建立 🎉">
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:16,padding:"8px 0 16px"}}>
+          <div style={{fontSize:13,color:TEXT_M,textAlign:"center"}}>把邀請碼分享給朋友，他們輸入後即可加入旅程</div>
+          <div style={{background:APP_BG,borderRadius:20,padding:"20px 32px",textAlign:"center",border:`1.5px solid ${BORDER}`}}>
+            <div style={{fontSize:11,color:TEXT_L,marginBottom:8,letterSpacing:"0.08em"}}>邀請碼</div>
+            <div style={{fontFamily:"Georgia,serif",fontSize:32,fontWeight:700,color:TEXT_D,letterSpacing:"0.2em"}}>{showInviteConfirm}</div>
+          </div>
+          <button onClick={()=>{
+            navigator.clipboard?.writeText(showInviteConfirm);
+          }} style={{display:"flex",alignItems:"center",gap:6,padding:"10px 20px",borderRadius:14,background:CARD_BG,border:`1.5px solid ${BORDER}`,cursor:"pointer",fontFamily:"inherit",fontSize:13,color:TEXT_M}}>
+            <Icon name="copy" size={14} color={TEXT_M}/> 複製邀請碼
+          </button>
+          <button onClick={()=>setShowInviteConfirm(null)}
+            style={{width:"100%",padding:"13px 0",borderRadius:16,background:"#2E2824",color:"#fff",fontSize:14,fontWeight:600,border:"none",cursor:"pointer",fontFamily:"inherit"}}>
+            開始規劃行程
+          </button>
+        </div>
+      </BottomSheet>
     </div>
   );
 }
@@ -3280,6 +3304,32 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
   const [activeTab,setActiveTab]=useState("calendar");
   const [delTarget,setDelTarget]=useState(null);
   const [showFlightPanel,setShowFlightPanel]=useState(false);
+  const [showLeaveConfirm,setShowLeaveConfirm]=useState(false);
+  const [memberProfiles,setMemberProfiles]=useState([]); // [{uid,displayName,photoURL}]
+
+  // 讀取成員資料
+  useEffect(()=>{
+    if(!trip.members||trip.members.length<=1) return;
+    const fetchMembers = async()=>{
+      try{
+        const profiles = await Promise.all(
+          trip.members.map(uid=>
+            getDoc(doc(fbDb,"users",uid)).then(d=>({uid,...(d.data()?.profile||{})}))
+          )
+        );
+        setMemberProfiles(profiles);
+      } catch{}
+    };
+    fetchMembers();
+  },[trip.members?.join(",")]);
+
+  // 儲存個人 profile 到 Firestore
+  useEffect(()=>{
+    if(!user) return;
+    setDoc(doc(fbDb,"users",user.uid),{
+      profile:{displayName:user.displayName||"",photoURL:user.photoURL||"",email:user.email||""}
+    },{merge:true}).catch(()=>{});
+  },[user?.uid]);
   // ── headerGone 必須在所有條件式 return 之前宣告 ──
   const [headerGone,setHeaderGone]=useState(false);
   const headerRef=useRef();
@@ -3593,11 +3643,48 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
               <div style={{fontSize:11,color:"rgba(255,255,255,.70)",marginTop:2}}>{trip.startDate} → {trip.endDate}</div>
             </div>
           </div>
-          {trip.type==="shared"&&trip.inviteCode&&(
-            <InviteCodeButton code={trip.inviteCode}/>
-          )}
+          <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+            {/* 成員頭像（共享旅程）*/}
+            {trip.type==="shared"&&memberProfiles.length>0&&(
+              <div style={{display:"flex"}}>
+                {memberProfiles.slice(0,4).map((m,i)=>(
+                  <div key={m.uid} style={{width:24,height:24,borderRadius:"50%",border:"2px solid rgba(255,255,255,.5)",marginLeft:i===0?0:-8,overflow:"hidden",background:pal.bg}}>
+                    {m.photoURL
+                      ? <img src={m.photoURL} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                      : <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"#fff",fontWeight:700}}>
+                          {(m.displayName||m.email||"?")[0].toUpperCase()}
+                        </div>
+                    }
+                  </div>
+                ))}
+                {memberProfiles.length>4&&(
+                  <div style={{width:24,height:24,borderRadius:"50%",border:"2px solid rgba(255,255,255,.5)",marginLeft:-8,background:"rgba(0,0,0,.3)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,color:"#fff"}}>
+                    +{memberProfiles.length-4}
+                  </div>
+                )}
+              </div>
+            )}
+            {trip.type==="shared"&&trip.inviteCode&&(
+              <InviteCodeButton code={trip.inviteCode}/>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* 離開共享旅程確認 */}
+      <Dialog show={showLeaveConfirm}
+        icon={<Icon name="logout" size={28}/>}
+        title="離開共享旅程？"
+        desc="離開後將無法看到此旅程，需要重新輸入邀請碼才能加入。"
+        onConfirm={async()=>{
+          if(!trip._docId) return;
+          const newMembers=(trip.members||[]).filter(uid=>uid!==user?.uid);
+          await updateDoc(doc(fbDb,"trips",trip._docId),{members:newMembers}).catch(()=>{});
+          setShowLeaveConfirm(false);
+          onBack();
+        }}
+        onCancel={()=>setShowLeaveConfirm(false)}
+        confirmLabel="確認離開" danger/>
 
       {/* 航班 Panel（透過 header 按鈕開啟）*/}
       <FlightPanel trip={trip} onUpdate={onUpdate} pal={pal} show={showFlightPanel} onClose={()=>setShowFlightPanel(false)}/>
@@ -3725,6 +3812,16 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
               </button>
             );
           })}
+          {/* 離開共享旅程（非 owner 才顯示）*/}
+          {trip.type==="shared"&&trip.ownerId!==user?.uid&&(
+            <button onClick={()=>setShowLeaveConfirm(true)}
+              style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",color:TEXT_L,opacity:.65}}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/>
+              </svg>
+              <span style={{fontSize:9,letterSpacing:"0.06em"}}>離開</span>
+            </button>
+          )}
         </div>
       </div>
 
