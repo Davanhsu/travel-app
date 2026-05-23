@@ -3736,7 +3736,6 @@ function LoginPage(){
 }
 
 export default function App(){
-export default function App(){
   const [user,    setUser]    = useState(undefined); // undefined=loading, null=logged out
   const [trips,   setTrips]   = useState([]);
   const [prefs,   setPrefs]   = useState({...DEFAULT_PREFS});
