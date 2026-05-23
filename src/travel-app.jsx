@@ -241,7 +241,7 @@ function CoverImagePicker({value,onChange}){
   const ref=useRef();
   const hf=async e=>{
     const f=e.target.files[0]; if(!f)return;
-    try{ onChange(await uploadToCloudinary(f)); }
+    try{ onChange(await uploadToCloudinary(f, fbAuth.currentUser?.uid)); }
     catch{ const r=new FileReader(); r.onload=async ev=>onChange(await compressImage(ev.target.result,1200,0.8)); r.readAsDataURL(f); }
   };
   return(
@@ -426,7 +426,22 @@ function CompactTimePicker({value, onChange}){
     </div>
   );
 }
-// ─── 圖片壓縮（存入前縮小，防 localStorage 超限）───
+// ─── Cloudinary 圖片上傳 ───
+const CLOUDINARY_URL = "https://api.cloudinary.com/v1_1/dq7gjb7wa/image/upload";
+const CLOUDINARY_PRESET = "travel_app";
+
+async function uploadToCloudinary(file, uid){
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("upload_preset", CLOUDINARY_PRESET);
+  if(uid) fd.append("folder", "users/"+uid);
+  const res = await fetch(CLOUDINARY_URL, {method:"POST", body:fd});
+  const data = await res.json();
+  if(data.secure_url) return data.secure_url;
+  throw new Error("Upload failed: "+(data.error?.message||"unknown"));
+}
+
+
 function compressImage(dataUrl, maxW=800, quality=0.75){
   return new Promise(res=>{
     const img=new Image();
@@ -451,7 +466,8 @@ function EventImageUploader({images, onChange}){
     const toUpload = files.slice(0, remaining);
     setUploading(true);
     try{
-      const urls = await Promise.all(toUpload.map(f=>uploadToCloudinary(f)));
+      const uid = fbAuth.currentUser?.uid;
+      const urls = await Promise.all(toUpload.map(f=>uploadToCloudinary(f, uid)));
       onChange([...(images||[]), ...urls]);
     } catch {
       // 失敗時 fallback 到 base64
@@ -857,7 +873,8 @@ function BookmarkTab({ trip, onUpdate }){
   const handleImgFiles = async e => {
     const files=Array.from(e.target.files), rem=10-fImages.length, toUpload=files.slice(0,rem);
     try{
-      const urls = await Promise.all(toUpload.map(f=>uploadToCloudinary(f)));
+      const uid = fbAuth.currentUser?.uid;
+      const urls = await Promise.all(toUpload.map(f=>uploadToCloudinary(f, uid)));
       setFImages(p=>[...p,...urls]);
     } catch {
       const urls = await Promise.all(toUpload.map(f=>new Promise(res=>{
@@ -2706,7 +2723,7 @@ function WalletTab({trip,onUpdate}){
                 style={{width:"100%",padding:"9px 12px",border:`1.5px solid ${BORDER}`,borderRadius:12,background:APP_BG,fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none"}}/>
             </div>
             <div>
-              <input ref={photoRef} type="file" accept="image/*" onChange={async e=>{const f=e.target.files[0];if(!f)return;try{setFPhoto(await uploadToCloudinary(f));}catch{const r=new FileReader();r.onload=async ev=>setFPhoto(await compressImage(ev.target.result));r.readAsDataURL(f);}}} style={{display:"none"}}/>
+              <input ref={photoRef} type="file" accept="image/*" onChange={async e=>{const f=e.target.files[0];if(!f)return;try{setFPhoto(await uploadToCloudinary(f,fbAuth.currentUser?.uid));}catch{const r=new FileReader();r.onload=async ev=>setFPhoto(await compressImage(ev.target.result));r.readAsDataURL(f);}}} style={{display:"none"}}/>
               {fPhoto
                 ? <div style={{position:"relative",width:40,height:40,borderRadius:12,overflow:"hidden"}}>
                     <img src={fPhoto} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
