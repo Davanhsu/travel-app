@@ -428,7 +428,7 @@ function CompactTimePicker({value, onChange}){
 }
 // ─── Cloudinary 圖片上傳 ───
 const CLOUDINARY_URL = "https://api.cloudinary.com/v1_1/dq7gjb7wa/image/upload";
-const CLOUDINARY_PRESET = "travel_app";
+const CLOUDINARY_PRESET = "hafnice-traveldale";
 
 async function uploadToCloudinary(file, uid){
   // 檔案驗證
