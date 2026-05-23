@@ -3078,6 +3078,7 @@ function TripListPage({trips,prefs,onSelect,onAdd,onDelete,onEditTrip,onUpdatePr
   const [delTarget,setDelTarget]=useState(null);
   const [editTarget,setEditTarget]=useState(null);
   const [showAdd,setShowAdd]=useState(false);
+  const [leaveTarget,setLeaveTarget]=useState(null); // 要離開的共享旅程
   const today=new Date().toISOString().slice(0,10);
   const sorted=[...trips].sort((a,b)=>{
     if((a.sortOrder??999)!==(b.sortOrder??999)) return (a.sortOrder??999)-(b.sortOrder??999);
@@ -3177,8 +3178,15 @@ function TripListPage({trips,prefs,onSelect,onAdd,onDelete,onEditTrip,onUpdatePr
                 <div {...gripProps} onClick={e=>e.stopPropagation()} style={{...(gripProps?.style),width:34,height:34,display:"flex",alignItems:"center",justifyContent:"center",marginRight:4,borderRadius:10,background:isActive?`${pal.bg}20`:APP_BG}}>
                   <Icon name="grip" size={18} color={isActive?pal.bg:BORDER}/>
                 </div>
-                <button onClick={()=>setDelTarget(trip.id)} style={{width:34,height:34,borderRadius:10,background:"#F4EDEC",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  <Icon name="trash" size={15} color="#B04A38" sw={1.5}/>
+                <button onClick={()=>{
+                  const isSharedWithOthers = trip.type==="shared" && (trip.members||[]).length>1;
+                  if(isSharedWithOthers) setLeaveTarget(trip);
+                  else setDelTarget(trip.id);
+                }} style={{width:34,height:34,borderRadius:10,background:"#F4EDEC",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  {trip.type==="shared"&&(trip.members||[]).length>1
+                    ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#B04A38" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
+                    : <Icon name="trash" size={15} color="#B04A38" sw={1.5}/>
+                  }
                 </button>
               </div>
             </div>
@@ -3196,6 +3204,16 @@ function TripListPage({trips,prefs,onSelect,onAdd,onDelete,onEditTrip,onUpdatePr
       <div style={{height:40}}/>
       <Dialog show={!!delTarget} icon={<Icon name="trash" size={28}/>} title="刪除這段旅程？" desc="刪除後將無法復原，所有行程資料也會一併清除。"
         onConfirm={()=>{onDelete(delTarget);setDelTarget(null);}} onCancel={()=>setDelTarget(null)} confirmLabel="確認刪除" danger/>
+      <Dialog show={!!leaveTarget} icon={<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#B04A38" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>}
+        title={"離開「"+(leaveTarget?.name||"")+"」？"}
+        desc="離開後將無法看到此旅程，需要重新輸入邀請碼才能加入。"
+        onConfirm={async()=>{
+          if(!leaveTarget?._docId) return;
+          const newMembers=(leaveTarget.members||[]).filter(uid=>uid!==user?.uid);
+          await updateDoc(doc(fbDb,"trips",leaveTarget._docId),{members:newMembers}).catch(()=>{});
+          setLeaveTarget(null);
+        }}
+        onCancel={()=>setLeaveTarget(null)} confirmLabel="確認離開" danger/>
       <TripFormSheet show={!!editTarget} onClose={()=>setEditTarget(null)} initialData={editTarget} onSave={data=>{onEditTrip(editTarget.id,data);setEditTarget(null);}}/>
       <TripFormSheet show={showAdd} onClose={()=>setShowAdd(false)} initialData={null} onSave={data=>{
         onAdd(data);
