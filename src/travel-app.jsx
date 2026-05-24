@@ -3500,56 +3500,57 @@ function TripExportView({trip, pal, onClose, bookmarks=[]}){
   const handleSave=async()=>{
     const content=document.getElementById("export-content");
     if(!content) return;
-
-    // 把所有外部圖片轉成 base64 內嵌，解決 iOS Blob 跨來源問題
-    const cloned = content.cloneNode(true);
-    const imgs = cloned.querySelectorAll("img");
-    await Promise.all(Array.from(imgs).map(async img=>{
-      if(!img.src||img.src.startsWith("data:")) return;
-      try{
-        const res = await fetch(img.src);
-        const blob = await res.blob();
-        await new Promise(res2=>{
-          const r=new FileReader();
-          r.onload=e=>{ img.src=e.target.result; res2(); };
-          r.readAsDataURL(blob);
-        });
-      } catch{ /* 保留原 URL */ }
-    }));
-
-    const html=`<!DOCTYPE html><html><head>
-      <meta charset="utf-8"/>
-      <meta name="viewport" content="width=device-width,initial-scale=1"/>
-      <title>${trip.name} 旅遊日記</title>
-      <style>
-        *{box-sizing:border-box;margin:0;padding:0;}
-        body{font-family:'Noto Serif TC',serif;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-        @media print{.no-print{display:none!important;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}}
-        @page{margin:8mm;size:A4;}
-      </style>
-      <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;700&display=swap" rel="stylesheet"/>
-    </head><body>${cloned.innerHTML}</body></html>`;
-    const blob=new Blob([html],{type:"text/html;charset=utf-8"});
-    const url=URL.createObjectURL(blob);
-    const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent);
-    if(isIOS){
-      window.open(url,"_blank");
-    } else {
-      const a=document.createElement("a");
-      a.href=url; a.download=trip.name+"_旅遊日記.html";
-      document.body.appendChild(a); a.click();
-      document.body.removeChild(a);
-      setTimeout(()=>URL.revokeObjectURL(url),1000);
+    try{
+      const cloned = content.cloneNode(true);
+      const imgs = cloned.querySelectorAll("img");
+      await Promise.all(Array.from(imgs).map(async img=>{
+        if(!img.src||img.src.startsWith("data:")) return;
+        try{
+          const res = await fetch(img.src);
+          const blob = await res.blob();
+          await new Promise(res2=>{
+            const r=new FileReader();
+            r.onload=e=>{ img.src=e.target.result; res2(); };
+            r.readAsDataURL(blob);
+          });
+        } catch{ /* 保留原 URL */ }
+      }));
+      const html=`<!DOCTYPE html><html><head>
+        <meta charset="utf-8"/>
+        <meta name="viewport" content="width=device-width,initial-scale=1"/>
+        <title>${trip.name} 旅遊日記</title>
+        <style>
+          *{box-sizing:border-box;margin:0;padding:0;}
+          body{font-family:'Noto Serif TC',serif;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+          @media print{.no-print{display:none!important;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}}
+          @page{margin:8mm;size:A4;}
+        </style>
+        <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;700&display=swap" rel="stylesheet"/>
+      </head><body>${cloned.innerHTML}</body></html>`;
+      const blob=new Blob([html],{type:"text/html;charset=utf-8"});
+      const url=URL.createObjectURL(blob);
+      const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent);
+      if(isIOS){
+        window.open(url,"_blank");
+      } else {
+        const a=document.createElement("a");
+        a.href=url; a.download=trip.name+"_旅遊日記.html";
+        document.body.appendChild(a); a.click();
+        document.body.removeChild(a);
+        setTimeout(()=>URL.revokeObjectURL(url),1000);
+      }
+    } catch(err){
+      alert("匯出失敗："+err.message);
     }
   };
 
   const handlePrint=()=>{
-    const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-    if(isSafari){
-      // Safari 不支援 window.print() 在 PWA，改用開啟預覽
-      handleSave();
-    } else {
-      setTimeout(()=>window.print(), 100);
+    try{
+      const isSafari=/^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+      if(isSafari){ handleSave(); }
+      else{ setTimeout(()=>window.print(),100); }
+    } catch(err){
+      alert("列印失敗："+err.message);
     }
   };
 
@@ -3752,7 +3753,7 @@ function TripExportView({trip, pal, onClose, bookmarks=[]}){
                   {list.map((p,i)=>(
                     <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 18px",background:"#F8F7F5",borderRadius:14,marginBottom:10,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}>
                       <div style={{display:"flex",alignItems:"center",gap:12}}>
-                        <div style={{width:36,height:36,borderRadius:"50%",background:pal.bg,display:"flex",alignItems:"center",justifyContent:"center",color:pal.fg,fontWeight:700,fontSize:15,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}>{p.name[0]}</div>
+                        <div style={{width:36,height:36,borderRadius:"50%",background:pal.bg,display:"flex",alignItems:"center",justifyContent:"center",color:pal.fg,fontWeight:700,fontSize:15,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}>{(p.name||"?")[0]}</div>
                         <span style={{fontSize:15,fontWeight:600,color:"#2E2824"}}>{p.name}</span>
                       </div>
                       <span style={{fontFamily:"Georgia,serif",fontSize:20,fontWeight:700,color:pal.bg}}>{trip.currency} {Math.round(p.total).toLocaleString()}</span>
