@@ -3457,6 +3457,26 @@ function TripExportView({trip, pal, onClose, bookmarks=[]}){
   expenses.forEach(e=>{ totalByCat[e.cat]=(totalByCat[e.cat]||0)+parseFloat(e.amount||0); });
   const grandTotal = expenses.reduce((s,e)=>s+parseFloat(e.amount||0),0);
 
+  // 各自應負擔金額（依分攤比例）
+  const burdenList = (() => {
+    if(!companions.length) return [];
+    const burden={};
+    companions.forEach(c=>{burden[c.id]={name:c.name||"?",total:0};});
+    expenses.forEach(ex=>{
+      const amt=parseFloat(ex.amount||0);
+      if(!ex.splitWith?.length) return;
+      const sw=(ex.splitWith||[]).filter(id=>burden[id]);
+      if(!sw.length) return;
+      if(ex.splitMode==="custom"&&ex.customAmounts){
+        sw.forEach(cid=>{ if(burden[cid]) burden[cid].total+=parseFloat(ex.customAmounts?.[cid]||0); });
+      } else {
+        const per=amt/sw.length;
+        sw.forEach(cid=>{ if(burden[cid]) burden[cid].total+=per; });
+      }
+    });
+    return Object.values(burden).filter(p=>p.total>0.01).sort((a,b)=>b.total-a.total);
+  })();
+
   // 結算計算（同 WalletTab 邏輯）
   const settlements = (()=>{
     if(!companions.length) return [];
@@ -3727,41 +3747,20 @@ function TripExportView({trip, pal, onClose, bookmarks=[]}){
                 );
               })}
             </div>
-            {companions.length>0&&(()=>{
-              // 計算每人實際應負擔金額（依分攤比例，不管誰付錢）
-              const burden={};
-              companions.forEach(c=>{burden[c.id]={name:c.name,total:0};});
-              expenses.forEach(ex=>{
-                const amt=parseFloat(ex.amount||0);
-                if(!ex.splitWith?.length) return;
-                const sw=ex.splitWith.filter(id=>burden[id]);
-                if(!sw.length) return;
-                if(ex.splitMode==="custom"&&ex.customAmounts){
-                  sw.forEach(cid=>{
-                    if(burden[cid]) burden[cid].total+=parseFloat(ex.customAmounts[cid]||0);
-                  });
-                } else {
-                  const per=amt/sw.length;
-                  sw.forEach(cid=>{ if(burden[cid]) burden[cid].total+=per; });
-                }
-              });
-              const list=Object.values(burden).filter(p=>p.total>0.01).sort((a,b)=>b.total-a.total);
-              if(!list.length) return null;
-              return(
-                <div>
-                  <div style={{fontSize:12,color:"#A09890",marginBottom:12,letterSpacing:"0.06em",textTransform:"uppercase"}}>各自應負擔金額</div>
-                  {list.map((p,i)=>(
-                    <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 18px",background:"#F8F7F5",borderRadius:14,marginBottom:10,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}>
-                      <div style={{display:"flex",alignItems:"center",gap:12}}>
-                        <div style={{width:36,height:36,borderRadius:"50%",background:pal.bg,display:"flex",alignItems:"center",justifyContent:"center",color:pal.fg,fontWeight:700,fontSize:15,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}>{(p.name||"?")[0]}</div>
-                        <span style={{fontSize:15,fontWeight:600,color:"#2E2824"}}>{p.name}</span>
-                      </div>
-                      <span style={{fontFamily:"Georgia,serif",fontSize:20,fontWeight:700,color:pal.bg}}>{trip.currency} {Math.round(p.total).toLocaleString()}</span>
+            {burdenList.length>0&&(
+              <div>
+                <div style={{fontSize:12,color:"#A09890",marginBottom:12,letterSpacing:"0.06em",textTransform:"uppercase"}}>各自應負擔金額</div>
+                {burdenList.map((p,i)=>(
+                  <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 18px",background:"#F8F7F5",borderRadius:14,marginBottom:10,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:12}}>
+                      <div style={{width:36,height:36,borderRadius:"50%",background:pal.bg,display:"flex",alignItems:"center",justifyContent:"center",color:pal.fg,fontWeight:700,fontSize:15,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}>{(p.name||"?")[0]}</div>
+                      <span style={{fontSize:15,fontWeight:600,color:"#2E2824"}}>{p.name}</span>
                     </div>
-                  ))}
-                </div>
-              );
-            })()}
+                    <span style={{fontFamily:"Georgia,serif",fontSize:20,fontWeight:700,color:pal.bg}}>{trip.currency} {Math.round(p.total).toLocaleString()}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
