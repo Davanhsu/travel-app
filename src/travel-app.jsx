@@ -3521,20 +3521,6 @@ function TripExportView({trip, pal, onClose, bookmarks=[]}){
     const content=document.getElementById("export-content");
     if(!content) return;
     try{
-      const cloned = content.cloneNode(true);
-      const imgs = cloned.querySelectorAll("img");
-      await Promise.all(Array.from(imgs).map(async img=>{
-        if(!img.src||img.src.startsWith("data:")) return;
-        try{
-          const res = await fetch(img.src);
-          const blob = await res.blob();
-          await new Promise(res2=>{
-            const r=new FileReader();
-            r.onload=e=>{ img.src=e.target.result; res2(); };
-            r.readAsDataURL(blob);
-          });
-        } catch{ /* 保留原 URL */ }
-      }));
       const html=`<!DOCTYPE html><html><head>
         <meta charset="utf-8"/>
         <meta name="viewport" content="width=device-width,initial-scale=1"/>
@@ -3546,7 +3532,7 @@ function TripExportView({trip, pal, onClose, bookmarks=[]}){
           @page{margin:8mm;size:A4;}
         </style>
         <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;700&display=swap" rel="stylesheet"/>
-      </head><body>${cloned.innerHTML}</body></html>`;
+      </head><body>${content.innerHTML}</body></html>`;
       const blob=new Blob([html],{type:"text/html;charset=utf-8"});
       const url=URL.createObjectURL(blob);
       const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent);
@@ -3622,7 +3608,7 @@ function TripExportView({trip, pal, onClose, bookmarks=[]}){
 
         {/* ── 封面（獨立一頁）── */}
         <div style={{position:"relative",minHeight:"100vh",background:pal.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",overflow:"hidden",WebkitPrintColorAdjust:"exact",printColorAdjust:"exact",pageBreakAfter:"always",breakAfter:"page"}}>
-          {trip.coverImage&&<img src={typeof trip.coverImage==="object"?trip.coverImage.url:trip.coverImage} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:`${typeof trip.coverImage==="object"?(trip.coverImage.posX??50):50}% ${typeof trip.coverImage==="object"?(trip.coverImage.posY??50):50}%`}}/>}
+          {trip.coverImage&&<img crossOrigin="anonymous" src={typeof trip.coverImage==="object"?trip.coverImage.url:trip.coverImage} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:`${typeof trip.coverImage==="object"?(trip.coverImage.posX??50):50}% ${typeof trip.coverImage==="object"?(trip.coverImage.posY??50):50}%`}}/>}
           <div style={{position:"absolute",inset:0,background:`linear-gradient(180deg,${pal.bg}88 0%,${pal.bg}EE 100%)`,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}/>
           <div style={{position:"relative",textAlign:"center",padding:"0 40px"}}>
             <div style={{fontFamily:"Georgia,serif",fontSize:52,fontWeight:700,color:pal.fg,lineHeight:1.2,marginBottom:12}}>{trip.name}</div>
@@ -3687,7 +3673,7 @@ function TripExportView({trip, pal, onClose, bookmarks=[]}){
                     {ev.images&&ev.images.length>0&&(
                       <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
                         {ev.images.slice(0,5).map((src,ii)=>(
-                          <img key={ii} src={src} alt="" style={{width:150,height:150,objectFit:"cover",borderRadius:12}}/>
+                          <img crossOrigin="anonymous" key={ii} src={src} alt="" style={{width:150,height:150,objectFit:"cover",borderRadius:12}}/>
                         ))}
                       </div>
                     )}
@@ -3706,7 +3692,7 @@ function TripExportView({trip, pal, onClose, bookmarks=[]}){
               <div key={bi} style={{marginBottom:18,paddingBottom:18,borderBottom:bi<bookmarks.length-1?"1px solid #EEE":"none"}}>
                 <div style={{display:"flex",gap:14,alignItems:"flex-start"}}>
                   {b.images&&b.images[0]&&(
-                    <img src={b.images[0]} alt="" style={{width:110,height:110,objectFit:"cover",borderRadius:12,flexShrink:0}}/>
+                    <img crossOrigin="anonymous" src={b.images[0]} alt="" style={{width:110,height:110,objectFit:"cover",borderRadius:12,flexShrink:0}}/>
                   )}
                   <div style={{flex:1}}>
                     <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
