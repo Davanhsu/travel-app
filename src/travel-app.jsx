@@ -238,22 +238,65 @@ function PalettePicker({value,onChange}){
     </div>
   );
 }
-function CoverImagePicker({value,onChange}){
-  const ref=useRef();
+function CoverImagePicker({value, onChange}){
+  // value 可以是 string(URL) 或 {url, posX, posY}
+  const url  = typeof value==="object" ? value?.url  : value;
+  const posX = typeof value==="object" ? (value?.posX??50) : 50;
+  const posY = typeof value==="object" ? (value?.posY??50) : 50;
+
+  const ref = useRef();
+  const dragRef = useRef(null);
+  const imgRef  = useRef();
+
   const hf=async e=>{
-    const f=e.target.files[0]; if(!f)return;
-    try{ onChange(await uploadToCloudinary(f, fbAuth.currentUser?.uid)); }
-    catch{ const r=new FileReader(); r.onload=async ev=>onChange(await compressImage(ev.target.result,1200,0.8)); r.readAsDataURL(f); }
+    const f=e.target.files[0]; if(!f) return;
+    try{
+      const u=await uploadToCloudinary(f, fbAuth.currentUser?.uid);
+      onChange({url:u, posX:50, posY:50});
+    } catch{
+      const r=new FileReader();
+      r.onload=async ev=>onChange({url:await compressImage(ev.target.result,1200,0.8), posX:50, posY:50});
+      r.readAsDataURL(f);
+    }
   };
+
+  const startDrag = e=>{
+    if(!url) return;
+    const el=imgRef.current; if(!el) return;
+    const rect=el.getBoundingClientRect();
+    const clientX=e.touches?e.touches[0].clientX:e.clientX;
+    const clientY=e.touches?e.touches[0].clientY:e.clientY;
+    dragRef.current={rect, startX:clientX, startY:clientY, posX, posY};
+    e.preventDefault();
+  };
+  const onDrag = e=>{
+    if(!dragRef.current) return;
+    const clientX=e.touches?e.touches[0].clientX:e.clientX;
+    const clientY=e.touches?e.touches[0].clientY:e.clientY;
+    const {rect,startX,startY}=dragRef.current;
+    const dx=((clientX-startX)/rect.width)*100;
+    const dy=((clientY-startY)/rect.height)*100;
+    const newX=Math.max(0,Math.min(100, dragRef.current.posX-dx));
+    const newY=Math.max(0,Math.min(100, dragRef.current.posY-dy));
+    onChange({url, posX:newX, posY:newY});
+  };
+  const endDrag = ()=>{ dragRef.current=null; };
+
   return(
     <div>
       <label style={{fontSize:11,color:TEXT_L,display:"block",marginBottom:8,letterSpacing:"0.07em",textTransform:"uppercase"}}>封面圖片（選填）</label>
       <input ref={ref} type="file" accept="image/*" onChange={hf} style={{display:"none"}}/>
-      <div onClick={()=>ref.current.click()} style={{borderRadius:16,border:`2px dashed ${BORDER}`,overflow:"hidden",height:value?110:68,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",position:"relative",background:value?"transparent":APP_BG}}>
-        {value?<img src={value} alt="cover" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-          :<div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,color:TEXT_L}}><Icon name="camera" size={22} color={TEXT_L} sw={1.3}/><span style={{fontSize:12}}>點擊上傳封面圖片</span></div>}
+      <div style={{borderRadius:16,border:`2px dashed ${BORDER}`,overflow:"hidden",height:url?130:68,display:"flex",alignItems:"center",justifyContent:"center",cursor:url?"grab":"pointer",position:"relative",background:url?"transparent":APP_BG}}
+        onClick={url?undefined:()=>ref.current.click()}
+        onMouseDown={startDrag} onMouseMove={onDrag} onMouseUp={endDrag} onMouseLeave={endDrag}
+        onTouchStart={startDrag} onTouchMove={onDrag} onTouchEnd={endDrag}>
+        {url
+          ? <img ref={imgRef} src={url} alt="cover" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:`${posX}% ${posY}%`,pointerEvents:"none",userSelect:"none"}}/>
+          : <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:6,color:TEXT_L}}><Icon name="camera" size={22} color={TEXT_L} sw={1.3}/><span style={{fontSize:12}}>點擊上傳封面圖片</span></div>
+        }
+        {url&&<div style={{position:"absolute",bottom:6,right:8,background:"rgba(0,0,0,.45)",borderRadius:8,padding:"3px 8px",fontSize:10,color:"#fff",pointerEvents:"none"}}>拖曳調整位置</div>}
       </div>
-      {value&&<div style={{display:"flex",gap:14,marginTop:6}}>
+      {url&&<div style={{display:"flex",gap:14,marginTop:6}}>
         <button onClick={()=>ref.current.click()} style={{fontSize:11,color:TEXT_M,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}}>更換圖片</button>
         <button onClick={()=>onChange(null)} style={{fontSize:11,color:"#B04A38",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit"}}>移除圖片</button>
       </div>}
@@ -3258,7 +3301,7 @@ function TripListPage({trips,prefs,onSelect,onAdd,onDelete,onEditTrip,onUpdatePr
           return(
             <div style={{marginBottom:14,borderRadius:24,overflow:"hidden",boxShadow:isActive?"0 10px 36px rgba(0,0,0,.2)":"0 4px 22px rgba(40,32,28,.13)",opacity:isActive?.9:1,filter:expired?"grayscale(0.3)":"none",transition:"opacity .15s"}}>
               <div onClick={()=>onSelect(trip.id)} style={{position:"relative",background:pal.bg,padding:"22px 22px 18px",cursor:"pointer",overflow:"hidden",minHeight:130}}>
-                {trip.coverImage&&<div style={{position:"absolute",inset:0}}><img src={trip.coverImage} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/><div style={{position:"absolute",inset:0,background:`linear-gradient(135deg,${pal.bg}E8 0%,${pal.bg}70 100%)`}}/></div>}
+                {trip.coverImage&&<div style={{position:"absolute",inset:0}}><img src={typeof trip.coverImage==="object"?trip.coverImage.url:trip.coverImage} alt="" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:`${typeof trip.coverImage==="object"?(trip.coverImage.posX??50):50}% ${typeof trip.coverImage==="object"?(trip.coverImage.posY??50):50}%`}}/><div style={{position:"absolute",inset:0,background:`linear-gradient(135deg,${pal.bg}E8 0%,${pal.bg}70 100%)`}}/></div>}
                 {expired&&<div style={{position:"absolute",top:12,left:14,background:"rgba(0,0,0,.32)",borderRadius:10,padding:"2px 8px",fontSize:9,color:"rgba(255,255,255,.8)",letterSpacing:"0.06em",zIndex:2}}>已結束</div>}
                 {isShared&&<div style={{position:"absolute",top:12,left:expired?60:14,background:"rgba(255,255,255,.25)",borderRadius:10,padding:"2px 8px",fontSize:9,color:"rgba(255,255,255,.95)",letterSpacing:"0.06em",zIndex:2,display:"flex",alignItems:"center",gap:3}}>
                   <Icon name="users" size={9} color="rgba(255,255,255,.95)"/> 共享
@@ -3454,9 +3497,26 @@ function TripExportView({trip, pal, onClose, bookmarks=[]}){
   const SPOT_CATS_MAP=Object.fromEntries(SPOT_CATS.map(c=>[c.id,c.label]));
   const EXPENSE_CAT_LABEL=Object.fromEntries(EXPENSE_CATS.map(c=>[c.id,c.label]));
 
-  const handleSave=()=>{
+  const handleSave=async()=>{
     const content=document.getElementById("export-content");
     if(!content) return;
+
+    // 把所有外部圖片轉成 base64 內嵌，解決 iOS Blob 跨來源問題
+    const cloned = content.cloneNode(true);
+    const imgs = cloned.querySelectorAll("img");
+    await Promise.all(Array.from(imgs).map(async img=>{
+      if(!img.src||img.src.startsWith("data:")) return;
+      try{
+        const res = await fetch(img.src);
+        const blob = await res.blob();
+        await new Promise(res2=>{
+          const r=new FileReader();
+          r.onload=e=>{ img.src=e.target.result; res2(); };
+          r.readAsDataURL(blob);
+        });
+      } catch{ /* 保留原 URL */ }
+    }));
+
     const html=`<!DOCTYPE html><html><head>
       <meta charset="utf-8"/>
       <meta name="viewport" content="width=device-width,initial-scale=1"/>
@@ -3465,20 +3525,16 @@ function TripExportView({trip, pal, onClose, bookmarks=[]}){
         *{box-sizing:border-box;margin:0;padding:0;}
         body{font-family:'Noto Serif TC',serif;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
         @media print{.no-print{display:none!important;}*{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}}
-        @page{margin:10mm;}
+        @page{margin:8mm;size:A4;}
       </style>
       <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;700&display=swap" rel="stylesheet"/>
-    </head><body>${content.innerHTML}</body></html>`;
+    </head><body>${cloned.innerHTML}</body></html>`;
     const blob=new Blob([html],{type:"text/html;charset=utf-8"});
     const url=URL.createObjectURL(blob);
-
-    // iOS PWA 不支援 <a download>，改用 window.open
     const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent);
     if(isIOS){
-      // iOS：開新視窗，使用者可從分享選單 → 列印 → 儲存 PDF
       window.open(url,"_blank");
     } else {
-      // Android / 桌面：直接下載
       const a=document.createElement("a");
       a.href=url; a.download=trip.name+"_旅遊日記.html";
       document.body.appendChild(a); a.click();
@@ -3545,7 +3601,7 @@ function TripExportView({trip, pal, onClose, bookmarks=[]}){
 
         {/* ── 封面（獨立一頁）── */}
         <div style={{position:"relative",minHeight:"100vh",background:pal.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",overflow:"hidden",WebkitPrintColorAdjust:"exact",printColorAdjust:"exact",pageBreakAfter:"always",breakAfter:"page"}}>
-          {trip.coverImage&&<img src={trip.coverImage} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>}
+          {trip.coverImage&&<img src={typeof trip.coverImage==="object"?trip.coverImage.url:trip.coverImage} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:`${typeof trip.coverImage==="object"?(trip.coverImage.posX??50):50}% ${typeof trip.coverImage==="object"?(trip.coverImage.posY??50):50}%`}}/>}
           <div style={{position:"absolute",inset:0,background:`linear-gradient(180deg,${pal.bg}88 0%,${pal.bg}EE 100%)`,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}/>
           <div style={{position:"relative",textAlign:"center",padding:"0 40px"}}>
             <div style={{fontFamily:"Georgia,serif",fontSize:52,fontWeight:700,color:pal.fg,lineHeight:1.2,marginBottom:12}}>{trip.name}</div>
@@ -4089,7 +4145,7 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
     }}>
       {/* 封面 Header — 緊湊版 */}
       <div style={{background:pal.bg,padding:"36px 18px 14px",position:"relative",overflow:"hidden"}}>
-        {trip.coverImage&&<div style={{position:"absolute",inset:0}}><img src={trip.coverImage} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/><div style={{position:"absolute",inset:0,background:`linear-gradient(180deg,${pal.bg}CC 0%,${pal.bg}90 100%)`}}/></div>}
+        {trip.coverImage&&<div style={{position:"absolute",inset:0}}><img src={typeof trip.coverImage==="object"?trip.coverImage.url:trip.coverImage} alt="" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:`${typeof trip.coverImage==="object"?(trip.coverImage.posX??50):50}% ${typeof trip.coverImage==="object"?(trip.coverImage.posY??50):50}%`}}/><div style={{position:"absolute",inset:0,background:`linear-gradient(180deg,${pal.bg}CC 0%,${pal.bg}90 100%)`}}/></div>}
         
         <div style={{position:"relative",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <div style={{display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0}}>
@@ -4199,7 +4255,7 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
                 return(
                   <div key={t.id} style={{borderRadius:24,overflow:"hidden",boxShadow:"0 4px 22px rgba(40,32,28,.13)"}}>
                     <div onClick={()=>onSelect?.(t.id)} style={{position:"relative",background:p2.bg,padding:"22px 22px 18px",cursor:"pointer",overflow:"hidden",minHeight:130}}>
-                      {t.coverImage&&<div style={{position:"absolute",inset:0}}><img src={t.coverImage} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/><div style={{position:"absolute",inset:0,background:`linear-gradient(135deg,${p2.bg}E8 0%,${p2.bg}70 100%)`}}/></div>}
+                      {t.coverImage&&<div style={{position:"absolute",inset:0}}><img src={typeof t.coverImage==="object"?t.coverImage.url:t.coverImage} alt="" style={{width:"100%",height:"100%",objectFit:"cover",objectPosition:`${typeof t.coverImage==="object"?(t.coverImage.posX??50):50}% ${typeof t.coverImage==="object"?(t.coverImage.posY??50):50}%`}}/><div style={{position:"absolute",inset:0,background:`linear-gradient(135deg,${p2.bg}E8 0%,${p2.bg}70 100%)`}}/></div>}
                       <button onClick={e=>{e.stopPropagation();setEditTarget2(t);}}
                         style={{position:"absolute",top:14,right:14,width:34,height:34,borderRadius:10,background:"rgba(255,255,255,.20)",border:"1.5px solid rgba(255,255,255,.35)",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",zIndex:2}}>
                         <Icon name="pencil-sm" size={15} color={p2.fg} sw={1.8}/>
