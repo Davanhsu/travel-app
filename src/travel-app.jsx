@@ -1582,7 +1582,7 @@ function HorizontalScroll({children, height}){
 }
 
 function TripListTab({trip, onUpdate, pal, listData={}, onUpdateListData}){
-  const saveLD = (key, val) => onUpdateListData({...listData, [key]: val});
+  const saveLD = (key, val) => onUpdateListData(p=>({...p, [key]: val}));
 
   const [openCat,      setOpenCat]      = useState("docs");
   const [openChecklist,setOpenChecklist]= useState(false);
@@ -1615,7 +1615,7 @@ function TripListTab({trip, onUpdate, pal, listData={}, onUpdateListData}){
   const saveTimer = useRef(null);
   const scheduleSave = () => {
     clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(()=>onUpdateListData({...ldRef.current}), 500);
+    saveTimer.current = setTimeout(()=>onUpdateListData(p=>({...p,...ldRef.current})), 500);
   };
 
   useEffect(()=>{ ldRef.current.checked=checked; scheduleSave(); },[checked]);
@@ -4299,7 +4299,7 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
       })()}
       {activeTab==="calendar"&&renderCalendar()}
       {activeTab==="map"&&<TripListTab trip={trip} onUpdate={onUpdate} pal={pal}
-        listData={listData?.[trip.id]||{}} onUpdateListData={d=>onUpdateListData(p=>({...p,[trip.id]:d}))}/>}
+        listData={listData?.[trip.id]||{}} onUpdateListData={d=>onUpdateListData(p=>({...p,[trip.id]:{...(p[trip.id]||{}),...(typeof d==="function"?d(p[trip.id]||{}):d)}}))}/>}
       {activeTab==="wallet"&&<WalletTab trip={trip} onUpdate={onUpdate}/>}
       {activeTab==="bookmark"&&<BookmarkTab trip={trip} onUpdate={onUpdate}
         bookmarks={listData?.[trip.id]?.bookmarks||[]}
@@ -4500,15 +4500,7 @@ function AppInner(){
     setDoc(doc(fbDb,"users",user.uid),{prefs},{merge:true}).catch(()=>{});
   },[prefs]);
 
-  // 存清單資料到 Firestore（debounce）
-  const listSaveTimer = useRef(null);
-  useEffect(()=>{
-    if(!user) return;
-    clearTimeout(listSaveTimer.current);
-    listSaveTimer.current = setTimeout(()=>{
-      setDoc(doc(fbDb,"listData",user.uid), listData, {merge:true}).catch(()=>{});
-    },1000);
-  },[listData]);
+  // listData 改為在 onUpdateListData 內即時存 Firestore，不需要 useEffect
 
   const handleAdd = async data=>{
     if(!user) return;
@@ -4575,7 +4567,14 @@ function AppInner(){
         ?<TripDetailPage trip={cur} onBack={()=>setCurrentId(null)} onUpdate={handleUpdate}
             trips={trips} prefs={prefs} onUpdatePrefs={setPrefs}
             onSelect={setCurrentId} onAdd={handleAdd} onDelete={handleDelete} onEditTrip={handleEdit}
-            listData={listData} onUpdateListData={setListData}
+            listData={listData} onUpdateListData={updater=>{
+              setListData(prev=>{
+                const next = typeof updater==="function" ? updater(prev) : {...prev,...updater};
+                // 立即存 Firestore
+                if(user) setDoc(doc(fbDb,"listData",user.uid), next, {merge:true}).catch(()=>{});
+                return next;
+              });
+            }}
             user={user}
             initialExport={exportId===cur?.id}
             onExportClose={()=>setExportId(null)}/>
