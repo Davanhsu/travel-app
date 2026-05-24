@@ -4131,7 +4131,7 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
     );
   }
 
-  if(showExport) return <TripExportView trip={trip} pal={pal} onClose={()=>{ setShowExport(false); onExportClose&&onExportClose(); }} bookmarks={listData?.[`bookmarks_${trip.id}`]||[]}/>;
+  if(showExport) return <TripExportView trip={trip} pal={pal} onClose={()=>{ setShowExport(false); onExportClose&&onExportClose(); }} bookmarks={listData?.[trip.id]?.bookmarks||[]}/>;
 
   return(
     <div style={{
@@ -4302,8 +4302,8 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
         listData={listData?.[trip.id]||{}} onUpdateListData={d=>onUpdateListData(p=>({...p,[trip.id]:d}))}/>}
       {activeTab==="wallet"&&<WalletTab trip={trip} onUpdate={onUpdate}/>}
       {activeTab==="bookmark"&&<BookmarkTab trip={trip} onUpdate={onUpdate}
-        bookmarks={listData?.[`bookmarks_${trip.id}`]||[]}
-        onUpdateBookmarks={bks=>onUpdateListData({...listData,[`bookmarks_${trip.id}`]:bks})}/> }
+        bookmarks={listData?.[trip.id]?.bookmarks||[]}
+        onUpdateBookmarks={bks=>onUpdateListData(p=>({...p,[trip.id]:{...(p[trip.id]||{}),bookmarks:bks}}))}/> }
 
       {/* ── 固定底部導覽列 ── */}
       <div style={{
