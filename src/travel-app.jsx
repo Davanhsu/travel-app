@@ -1617,7 +1617,7 @@ function TripListTab({trip, onUpdate, pal, listData={}, onUpdateListData}){
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(()=>{
       onUpdateListData({...listData, ...ldRef.current});
-    }, 800);
+    }, 600);
   };
 
   useEffect(()=>{ ldRef.current.checked=checked; scheduleSave(); },[checked]);
@@ -4572,8 +4572,8 @@ function AppInner(){
             onSelect={setCurrentId} onAdd={handleAdd} onDelete={handleDelete} onEditTrip={handleEdit}
             listData={listData} onUpdateListData={updater=>{
               const next = typeof updater==="function" ? updater(listData) : updater;
+              setListData(next); // 樂觀更新 UI
               setDoc(doc(fbDb,"listData",user.uid), next, {merge:true}).catch(()=>{});
-              setListData(next);
             }}
             user={user}
             initialExport={exportId===cur?.id}
