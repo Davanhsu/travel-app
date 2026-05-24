@@ -34,6 +34,7 @@ const Icon = ({ name, size=22, color="currentColor", sw=1.5 }) => {
     wallet:        <svg style={s} viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="14" rx="2" {...p}/><path d="M2 10h20" {...p}/><circle cx="17" cy="15" r="1.5" {...p}/><path d="M6 3l14 3" {...p}/></svg>,
     bookmark:      <svg style={s} viewBox="0 0 24 24"><path d="M5 3h14a1 1 0 011 1v17l-8-4-8 4V4a1 1 0 011-1z" {...p}/></svg>,
     copy:          <svg style={s} viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" {...p}/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" {...p}/></svg>,
+    plus:          <svg style={s} viewBox="0 0 24 24"><path d="M12 5v14M5 12h14" {...p}/></svg>,
     "pencil-sm":   <svg style={s} viewBox="0 0 24 24"><path d="M15.232 5.232l3.536 3.536M9 13l6.5-6.5a2.121 2.121 0 013 3L12 16H9v-3z" {...p}/></svg>,
     trash:         <svg style={s} viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" {...p}/><path d="M10 11v6M14 11v6" {...p}/></svg>,
     "chevron-left":<svg style={s} viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6" {...p}/></svg>,
@@ -530,21 +531,36 @@ function EventImageUploader({images, onChange}){
   const ref = useRef();
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
+
   const handleFiles = async e => {
     const files = Array.from(e.target.files);
     if(!files.length) return;
     const remaining = 10 - (images||[]).length;
     const toUpload = files.slice(0, remaining);
-    setUploading(true);
     setUploadError(null);
+
+    // 立即顯示本地預覽（樂觀更新）
+    const localUrls = await Promise.all(toUpload.map(f=>new Promise(res=>{
+      const r=new FileReader(); r.onload=ev=>res(ev.target.result); r.readAsDataURL(f);
+    })));
+    onChange([...(images||[]), ...localUrls]);
+    setUploading(true);
+
+    // 背景上傳 Cloudinary，完成後替換 URL
     try{
       const uid = fbAuth.currentUser?.uid;
-      const urls = await Promise.all(toUpload.map(f=>uploadToCloudinary(f, uid)));
-      onChange([...(images||[]), ...urls]);
-    } catch(err) {
+      const cloudUrls = await Promise.all(toUpload.map(f=>uploadToCloudinary(f, uid)));
+      // 把剛加入的 localUrls 替換成 cloudUrls
+      onChange(prev=>{
+        const newImgs = [...prev];
+        const startIdx = newImgs.length - localUrls.length;
+        cloudUrls.forEach((url,i)=>{ newImgs[startIdx+i]=url; });
+        return newImgs;
+      });
+    } catch(err){
       const msg = err?.message||"";
       if(msg.includes("10MB")) setUploadError("檔案超過 10MB，請選擇較小的圖片");
-      else if(msg.includes("格式")) setUploadError("不支援此檔案格式，請使用 JPG、PNG 或 WEBP");
+      else if(msg.includes("格式")) setUploadError("不支援此檔案格式");
       else setUploadError("上傳失敗，請稍後再試");
     }
     setUploading(false);
@@ -917,9 +933,8 @@ function SpotCatIcon({ id, size=22, color="currentColor" }){
   return <CatIcon id={SPOT_ICON_MAP[id]||"other"} size={size} color={color}/>;
 }
 
-function BookmarkTab({ trip, onUpdate }){
+function BookmarkTab({ trip, onUpdate, bookmarks=[], onUpdateBookmarks }){
   const pal        = PALETTE[trip.paletteIdx??0];
-  const bookmarks  = trip.bookmarks||[];
   const [selCat,   setSelCat]   = useState("all");
   const [showForm, setShowForm] = useState(false);
   const [editItem, setEditItem] = useState(null);
@@ -931,26 +946,36 @@ function BookmarkTab({ trip, onUpdate }){
   const [fImages, setFImages] = useState([]);
   const imgRef = useRef();
 
-  const updateTrip = patch => onUpdate({...trip,...patch});
   const openAdd = () => { setEditItem(null); setFName(""); setFCat("restaurant"); setFAddr(""); setFNote(""); setFImages([]); setShowForm(true); };
   const openEdit = item => { setEditItem(item); setFName(item.name); setFCat(item.cat); setFAddr(item.addr||""); setFNote(item.note||""); setFImages(item.images||[]); setShowForm(true); };
   const saveSpot = () => {
     if(!fName.trim()) return;
     const spot = { id:editItem?.id||genId(), name:fName.trim(), cat:fCat, addr:fAddr.trim(), note:fNote.trim(), images:fImages };
-    updateTrip({ bookmarks: editItem ? bookmarks.map(b=>b.id===editItem.id?spot:b) : [...bookmarks,spot] });
+    onUpdateBookmarks(editItem ? bookmarks.map(b=>b.id===editItem.id?spot:b) : [...bookmarks,spot]);
     setShowForm(false);
   };
-  const delSpot = id => { updateTrip({ bookmarks: bookmarks.filter(b=>b.id!==id) }); setDelTarget(null); };
+  const delSpot = id => { onUpdateBookmarks(bookmarks.filter(b=>b.id!==id)); setDelTarget(null); };
   const [imgUploadError, setImgUploadError] = useState(null);
   const handleImgFiles = async e => {
     const files=Array.from(e.target.files), rem=10-fImages.length, toUpload=files.slice(0,rem);
     setImgUploadError(null);
+    // 立即顯示本地預覽
+    const localUrls = await Promise.all(toUpload.map(f=>new Promise(res=>{
+      const r=new FileReader(); r.onload=ev=>res(ev.target.result); r.readAsDataURL(f);
+    })));
+    setFImages(p=>[...p,...localUrls]);
+    // 背景上傳後替換
     try{
       const uid = fbAuth.currentUser?.uid;
-      const urls = await Promise.all(toUpload.map(f=>uploadToCloudinary(f, uid)));
-      setFImages(p=>[...p,...urls]);
+      const cloudUrls = await Promise.all(toUpload.map(f=>uploadToCloudinary(f, uid)));
+      setFImages(p=>{
+        const n=[...p];
+        const start=n.length-localUrls.length;
+        cloudUrls.forEach((url,i)=>{ n[start+i]=url; });
+        return n;
+      });
     } catch(err){
-      const msg = err?.message||"";
+      const msg=err?.message||"";
       if(msg.includes("10MB")) setImgUploadError("檔案超過 10MB");
       else if(msg.includes("格式")) setImgUploadError("不支援此檔案格式");
       else setImgUploadError("上傳失敗，請稍後再試");
@@ -2791,7 +2816,18 @@ function WalletTab({trip,onUpdate}){
                 style={{width:"100%",padding:"9px 12px",border:`1.5px solid ${BORDER}`,borderRadius:12,background:APP_BG,fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none"}}/>
             </div>
             <div>
-              <input ref={photoRef} type="file" accept="image/*" onChange={async e=>{const f=e.target.files[0];if(!f)return;try{setFPhoto(await uploadToCloudinary(f,fbAuth.currentUser?.uid));}catch{const r=new FileReader();r.onload=async ev=>setFPhoto(await compressImage(ev.target.result));r.readAsDataURL(f);}}} style={{display:"none"}}/>
+              <input ref={photoRef} type="file" accept="image/*" onChange={async e=>{
+                const f=e.target.files[0]; if(!f) return;
+                // 立即預覽
+                const r=new FileReader();
+                r.onload=async ev=>{
+                  setFPhoto(ev.target.result);
+                  // 背景上傳替換
+                  try{ setFPhoto(await uploadToCloudinary(f,fbAuth.currentUser?.uid)); }
+                  catch{ /* 保留本地預覽 */ }
+                };
+                r.readAsDataURL(f);
+              }} style={{display:"none"}}/>
               {fPhoto
                 ? <div style={{position:"relative",width:40,height:40,borderRadius:12,overflow:"hidden"}}>
                     <img src={fPhoto} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
@@ -3074,8 +3110,8 @@ function TripFormSheet({show,onClose,onSave,initialData}){
   return(
     <BottomSheet show={show} onClose={onClose} title={isEdit?"編輯旅程資訊":"新增旅遊地點"}>
       <div style={{display:"flex",flexDirection:"column",gap:14}}>
-        {/* 旅程類型 */}
-        {!isEdit&&(
+        {/* 旅程類型 — 新增時可選；編輯時個人可升級為共享 */}
+        {(!isEdit || initialData?.type==="personal") && (
           <div>
             <label style={{fontSize:11,color:TEXT_L,display:"block",marginBottom:8,letterSpacing:"0.07em",textTransform:"uppercase"}}>旅程類型</label>
             <div style={{display:"flex",gap:8}}>
@@ -3091,6 +3127,11 @@ function TripFormSheet({show,onClose,onSave,initialData}){
               <div style={{marginTop:8,padding:"10px 14px",background:APP_BG,borderRadius:12,border:`1px solid ${BORDER}`}}>
                 <div style={{fontSize:10,color:TEXT_L,marginBottom:4}}>邀請碼（建立後分享給朋友）</div>
                 <div style={{fontSize:20,fontWeight:700,color:TEXT_D,letterSpacing:"0.15em"}}>{initialData?.inviteCode||inviteCode}</div>
+              </div>
+            )}
+            {isEdit&&initialData?.type==="personal"&&tripType==="shared"&&(
+              <div style={{marginTop:6,fontSize:11,color:"#B04A38",padding:"6px 10px",background:"#FDF0EE",borderRadius:8}}>
+                轉換後無法改回個人旅程，朋友可透過邀請碼加入
               </div>
             )}
           </div>
@@ -3364,10 +3405,9 @@ function TransitBar({from,fromUrl,to,toUrl,pal}){
 }
 
 // ─── PDF 匯出頁面 ───
-function TripExportView({trip, pal, onClose}){
+function TripExportView({trip, pal, onClose, bookmarks=[]}){
   const flights   = trip.flights||[];
   const expenses  = trip.expenses||[];
-  const bookmarks = trip.bookmarks||[];
   const companions= trip.companions||[];
 
   const totalByCat = {};
@@ -3503,15 +3543,16 @@ function TripExportView({trip, pal, onClose}){
 
       <div className="export-wrap" id="export-content">
 
-        {/* ── 封面 ── */}
-        <div style={{position:"relative",height:440,background:pal.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",overflow:"hidden",WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}>
+        {/* ── 封面（獨立一頁）── */}
+        <div style={{position:"relative",minHeight:"100vh",background:pal.bg,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",overflow:"hidden",WebkitPrintColorAdjust:"exact",printColorAdjust:"exact",pageBreakAfter:"always",breakAfter:"page"}}>
           {trip.coverImage&&<img src={trip.coverImage} alt="" style={{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover"}}/>}
-          <div style={{position:"absolute",inset:0,background:`linear-gradient(180deg,${pal.bg}99 0%,${pal.bg}EE 100%)`,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}/>
-          <div style={{position:"relative",textAlign:"center",padding:"0 24px"}}>
-            <div style={{fontFamily:"Georgia,serif",fontSize:48,fontWeight:700,color:pal.fg,lineHeight:1.2,marginBottom:10}}>{trip.name}</div>
-            {trip.subtitle&&<div style={{fontSize:16,color:"rgba(255,255,255,.9)",marginBottom:12}}>{trip.subtitle}</div>}
-            <div style={{fontSize:13,color:"rgba(255,255,255,.85)",letterSpacing:"0.08em"}}>{trip.startDate} → {trip.endDate}</div>
-            <div style={{fontSize:12,color:"rgba(255,255,255,.75)",marginTop:4}}>{trip.days?.length||0} 天 · {trip.days?.reduce((s,d)=>s+d.schedule.length,0)||0} 個行程</div>
+          <div style={{position:"absolute",inset:0,background:`linear-gradient(180deg,${pal.bg}88 0%,${pal.bg}EE 100%)`,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}/>
+          <div style={{position:"relative",textAlign:"center",padding:"0 40px"}}>
+            <div style={{fontFamily:"Georgia,serif",fontSize:52,fontWeight:700,color:pal.fg,lineHeight:1.2,marginBottom:12}}>{trip.name}</div>
+            {trip.subtitle&&<div style={{fontSize:18,color:"rgba(255,255,255,.9)",marginBottom:16}}>{trip.subtitle}</div>}
+            <div style={{width:60,height:2,background:"rgba(255,255,255,.4)",margin:"0 auto 16px",WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}/>
+            <div style={{fontSize:14,color:"rgba(255,255,255,.85)",letterSpacing:"0.12em"}}>{trip.startDate} → {trip.endDate}</div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,.65)",marginTop:8}}>{trip.days?.length||0} 天 · {trip.days?.reduce((s,d)=>s+d.schedule.length,0)||0} 個行程</div>
           </div>
         </div>
 
@@ -3532,45 +3573,44 @@ function TripExportView({trip, pal, onClose}){
                   {f.depDate&&<span>出發：{f.depDate} {f.depTime}</span>}
                   {f.arrDate&&<span>抵達：{f.arrDate} {f.arrTime}</span>}
                   {f.terminal&&<span>航廈：{f.terminal}</span>}
-                  {f.seat&&<span>座位：{f.seat}</span>}
+                  {f.seat&&<span>{f.seat}</span>}
                 </div>
-                {f.note&&<div style={{fontSize:11,color:"#A09890",marginTop:5}}>{f.note}</div>}
               </div>
             ))}
           </div>
         )}
 
-        {/* ── 每日行程 ── */}
+        {/* ── 每日行程（每天強制新頁）── */}
         {(trip.days||[]).map((day,di)=>(
-          <div key={di} style={{padding:"36px 32px 0"}}>
-            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
-              <div style={{width:4,height:28,background:pal.bg,borderRadius:2,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}/>
+          <div key={di} style={{padding:"36px 32px 24px",pageBreakBefore:"always",breakBefore:"page",minHeight:"50vh"}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:24}}>
+              <div style={{width:5,height:32,background:pal.bg,borderRadius:3,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}/>
               <div>
-                <div style={{fontFamily:"Georgia,serif",fontSize:20,fontWeight:700,color:"#2E2824"}}>Day {day.dateNumber}</div>
-                <div style={{fontSize:11,color:"#A09890"}}>{day.fullDate} {day.weekDay}</div>
+                <div style={{fontFamily:"Georgia,serif",fontSize:26,fontWeight:700,color:"#2E2824"}}>Day {day.dateNumber}</div>
+                <div style={{fontSize:13,color:"#A09890"}}>{day.fullDate} {day.weekDay}</div>
               </div>
             </div>
-            {day.schedule.length===0&&<div style={{fontSize:13,color:"#A09890",fontStyle:"italic",marginBottom:12}}>無行程安排</div>}
+            {day.schedule.length===0&&<div style={{fontSize:13,color:"#A09890",fontStyle:"italic"}}>無行程安排</div>}
             {day.schedule.map((ev,ei)=>(
-              <div key={ei} style={{marginBottom:16,paddingBottom:16,borderBottom:ei<day.schedule.length-1?"1px solid #EEE":"none"}}>
-                <div style={{display:"flex",gap:12}}>
-                  <div style={{width:48,flexShrink:0,textAlign:"right",paddingTop:2}}>
-                    <div style={{fontSize:11,fontWeight:700,color:pal.bg}}>{ev.time}</div>
-                    {ev.duration&&<div style={{fontSize:9,color:"#A09890",marginTop:1}}>{ev.duration}</div>}
+              <div key={ei} style={{marginBottom:24,paddingBottom:24,borderBottom:ei<day.schedule.length-1?"1px solid #EEE":"none"}}>
+                <div style={{display:"flex",gap:16}}>
+                  <div style={{width:56,flexShrink:0,textAlign:"right",paddingTop:2}}>
+                    <div style={{fontSize:13,fontWeight:700,color:pal.bg}}>{ev.time}</div>
+                    {ev.duration&&<div style={{fontSize:10,color:"#A09890",marginTop:2}}>{ev.duration}</div>}
                   </div>
                   <div style={{flex:1}}>
-                    <div style={{fontSize:14,fontWeight:700,color:"#2E2824",marginBottom:3}}>{ev.title}</div>
+                    <div style={{fontSize:16,fontWeight:700,color:"#2E2824",marginBottom:5}}>{ev.title}</div>
                     {ev.location&&ev.location!=="未定地點"&&(
-                      <div style={{fontSize:11,color:"#6A6058",marginBottom:5,display:"flex",alignItems:"center",gap:3}}>
-                        <svg width="10" height="10" viewBox="0 0 24 24" fill={pal.bg}><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+                      <div style={{fontSize:12,color:"#6A6058",marginBottom:8,display:"flex",alignItems:"center",gap:4}}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill={pal.bg}><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
                         {ev.location}
                       </div>
                     )}
-                    {ev.content&&<div style={{fontSize:12,color:"#6A6058",lineHeight:1.7,whiteSpace:"pre-wrap",marginBottom:ev.images?.length?8:0}}>{ev.content}</div>}
+                    {ev.content&&<div style={{fontSize:13,color:"#6A6058",lineHeight:1.8,whiteSpace:"pre-wrap",marginBottom:ev.images?.length?12:0}}>{ev.content}</div>}
                     {ev.images&&ev.images.length>0&&(
-                      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                      <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
                         {ev.images.slice(0,5).map((src,ii)=>(
-                          <img key={ii} src={src} alt="" style={{width:140,height:140,objectFit:"cover",borderRadius:10}}/>
+                          <img key={ii} src={src} alt="" style={{width:150,height:150,objectFit:"cover",borderRadius:12}}/>
                         ))}
                       </div>
                     )}
@@ -3583,21 +3623,21 @@ function TripExportView({trip, pal, onClose}){
 
         {/* ── 口袋名單 ── */}
         {bookmarks.length>0&&(
-          <div style={{padding:"36px 32px 0"}}>
+          <div style={{padding:"36px 32px 0",pageBreakBefore:"always",breakBefore:"page"}}>
             <SectionTitle color={pal.bg}>口袋名單</SectionTitle>
             {bookmarks.map((b,bi)=>(
-              <div key={bi} style={{marginBottom:14,paddingBottom:14,borderBottom:bi<bookmarks.length-1?"1px solid #EEE":"none"}}>
-                <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+              <div key={bi} style={{marginBottom:18,paddingBottom:18,borderBottom:bi<bookmarks.length-1?"1px solid #EEE":"none"}}>
+                <div style={{display:"flex",gap:14,alignItems:"flex-start"}}>
                   {b.images&&b.images[0]&&(
                     <img src={b.images[0]} alt="" style={{width:110,height:110,objectFit:"cover",borderRadius:12,flexShrink:0}}/>
                   )}
                   <div style={{flex:1}}>
-                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
-                      <span style={{fontSize:14,fontWeight:700,color:"#2E2824"}}>{b.name}</span>
-                      <span style={{fontSize:9,color:pal.bg,background:pal.bg+"20",padding:"2px 7px",borderRadius:6,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}>{SPOT_CATS_MAP[b.cat]||b.cat}</span>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:5}}>
+                      <span style={{fontSize:15,fontWeight:700,color:"#2E2824"}}>{b.name}</span>
+                      <span style={{fontSize:10,color:pal.bg,background:pal.bg+"20",padding:"2px 8px",borderRadius:6,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}>{SPOT_CATS_MAP[b.cat]||b.cat}</span>
                     </div>
-                    {b.addr&&<div style={{fontSize:11,color:"#6A6058",marginBottom:3}}>{b.addr}</div>}
-                    {b.note&&<div style={{fontSize:11,color:"#6A6058",lineHeight:1.6,whiteSpace:"pre-wrap"}}>{b.note}</div>}
+                    {b.addr&&<div style={{fontSize:12,color:"#6A6058",marginBottom:5}}>{b.addr}</div>}
+                    {b.note&&<div style={{fontSize:12,color:"#6A6058",lineHeight:1.7,whiteSpace:"pre-wrap"}}>{b.note}</div>}
                   </div>
                 </div>
               </div>
@@ -3607,48 +3647,52 @@ function TripExportView({trip, pal, onClose}){
 
         {/* ── 記帳總結 ── */}
         {expenses.length>0&&(
-          <div style={{padding:"36px 32px 0"}}>
+          <div style={{padding:"36px 32px 0",pageBreakBefore:"always",breakBefore:"page"}}>
             <SectionTitle color={pal.bg}>記帳總結</SectionTitle>
-            {/* 總花費 */}
-            <div style={{background:"#F8F7F5",borderRadius:16,padding:"18px 24px",marginBottom:16,textAlign:"center",WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}>
+            <div style={{background:"#F8F7F5",borderRadius:16,padding:"20px 24px",marginBottom:24,textAlign:"center",WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}>
               <div style={{fontSize:11,color:"#A09890",marginBottom:4}}>總花費</div>
-              <div style={{fontFamily:"Georgia,serif",fontSize:30,fontWeight:700,color:pal.bg}}>{trip.currency} {grandTotal.toLocaleString()}</div>
-              <div style={{fontSize:11,color:"#A09890",marginTop:3}}>{expenses.length} 筆消費</div>
+              <div style={{fontFamily:"Georgia,serif",fontSize:36,fontWeight:700,color:pal.bg}}>{trip.currency} {grandTotal.toLocaleString()}</div>
+              <div style={{fontSize:11,color:"#A09890",marginTop:4}}>{expenses.length} 筆消費</div>
             </div>
-            {/* 各類別 */}
-            <div style={{marginBottom:20}}>
+            <div style={{marginBottom:24}}>
               {Object.entries(totalByCat).sort((a,b)=>b[1]-a[1]).map(([cat,amt])=>{
                 const pct=grandTotal>0?Math.round(amt/grandTotal*100):0;
                 return(
-                  <div key={cat} style={{marginBottom:8}}>
-                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:3}}>
-                      <span style={{fontSize:12,color:"#2E2824"}}>{EXPENSE_CAT_LABEL[cat]||cat}</span>
-                      <span style={{fontSize:12,fontWeight:600,color:"#2E2824"}}>{trip.currency} {amt.toLocaleString()} <span style={{fontSize:10,color:"#A09890"}}>({pct}%)</span></span>
+                  <div key={cat} style={{marginBottom:10}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                      <span style={{fontSize:13,color:"#2E2824"}}>{EXPENSE_CAT_LABEL[cat]||cat}</span>
+                      <span style={{fontSize:13,fontWeight:600,color:"#2E2824"}}>{trip.currency} {amt.toLocaleString()} <span style={{fontSize:11,color:"#A09890"}}>({pct}%)</span></span>
                     </div>
-                    <div style={{height:5,background:"#EEE",borderRadius:3,overflow:"hidden",WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}>
+                    <div style={{height:6,background:"#EEE",borderRadius:3,overflow:"hidden",WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}>
                       <div style={{height:"100%",width:pct+"%",background:pal.bg,borderRadius:3,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}/>
                     </div>
                   </div>
                 );
               })}
             </div>
-            {/* 旅伴分攤 */}
-            {settlements.length>0&&(
-              <div>
-                <div style={{fontSize:12,color:"#A09890",marginBottom:10,letterSpacing:"0.06em",textTransform:"uppercase"}}>旅伴分攤結果</div>
-                {settlements.map((s,i)=>(
-                  <div key={i} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 14px",background:"#F8F7F5",borderRadius:12,marginBottom:8,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}>
-                    <span style={{fontSize:13,fontWeight:600,color:"#2E2824"}}>{s.from}</span>
-                    <span style={{fontSize:11,color:"#A09890"}}>應付給</span>
-                    <span style={{fontSize:13,fontWeight:600,color:"#2E2824"}}>{s.to}</span>
-                    <span style={{marginLeft:"auto",fontSize:14,fontWeight:700,color:pal.bg}}>{trip.currency} {Math.round(s.amount).toLocaleString()}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            {companions.length>0&&settlements.length===0&&(
-              <div style={{fontSize:12,color:"#A09890",textAlign:"center",padding:"12px 0"}}>所有費用已結清 ✓</div>
-            )}
+            {companions.length>0&&(()=>{
+              const perPerson={};
+              companions.forEach(c=>{perPerson[c.id]={name:c.name,total:0};});
+              expenses.forEach(ex=>{
+                if(ex.paidBy&&perPerson[ex.paidBy]) perPerson[ex.paidBy].total+=parseFloat(ex.amount||0);
+              });
+              const list=Object.values(perPerson).filter(p=>p.total>0).sort((a,b)=>b.total-a.total);
+              if(!list.length) return null;
+              return(
+                <div>
+                  <div style={{fontSize:12,color:"#A09890",marginBottom:12,letterSpacing:"0.06em",textTransform:"uppercase"}}>各自花費</div>
+                  {list.map((p,i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"12px 18px",background:"#F8F7F5",borderRadius:14,marginBottom:10,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:12}}>
+                        <div style={{width:36,height:36,borderRadius:"50%",background:pal.bg,display:"flex",alignItems:"center",justifyContent:"center",color:pal.fg,fontWeight:700,fontSize:15,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}>{p.name[0]}</div>
+                        <span style={{fontSize:15,fontWeight:600,color:"#2E2824"}}>{p.name}</span>
+                      </div>
+                      <span style={{fontFamily:"Georgia,serif",fontSize:20,fontWeight:700,color:pal.bg}}>{trip.currency} {p.total.toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -4033,7 +4077,7 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
     );
   }
 
-  if(showExport) return <TripExportView trip={trip} pal={pal} onClose={()=>{ setShowExport(false); onExportClose&&onExportClose(); }}/>;
+  if(showExport) return <TripExportView trip={trip} pal={pal} onClose={()=>{ setShowExport(false); onExportClose&&onExportClose(); }} bookmarks={listData?.bookmarks||[]}/>;
 
   return(
     <div style={{
@@ -4203,7 +4247,9 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
       {activeTab==="map"&&<TripListTab trip={trip} onUpdate={onUpdate} pal={pal}
         listData={listData?.[trip.id]||{}} onUpdateListData={d=>onUpdateListData(p=>({...p,[trip.id]:d}))}/>}
       {activeTab==="wallet"&&<WalletTab trip={trip} onUpdate={onUpdate}/>}
-      {activeTab==="bookmark"&&<BookmarkTab trip={trip} onUpdate={onUpdate}/>}
+      {activeTab==="bookmark"&&<BookmarkTab trip={trip} onUpdate={onUpdate}
+        bookmarks={listData?.bookmarks||[]}
+        onUpdateBookmarks={bks=>onUpdateListData({...listData,bookmarks:bks})}/>}
 
       {/* ── 固定底部導覽列 ── */}
       <div style={{
