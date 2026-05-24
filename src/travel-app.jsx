@@ -1582,7 +1582,7 @@ function HorizontalScroll({children, height}){
 }
 
 function TripListTab({trip, onUpdate, pal, listData={}, onUpdateListData}){
-  const saveLD = (key, val) => onUpdateListData(p=>({...p, [key]: val}));
+  const saveLD = (key, val) => onUpdateListData({...listData, [key]: val});
 
   const [openCat,      setOpenCat]      = useState("docs");
   const [openChecklist,setOpenChecklist]= useState(false);
@@ -1615,7 +1615,9 @@ function TripListTab({trip, onUpdate, pal, listData={}, onUpdateListData}){
   const saveTimer = useRef(null);
   const scheduleSave = () => {
     clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(()=>onUpdateListData(p=>({...p,...ldRef.current})), 500);
+    saveTimer.current = setTimeout(()=>{
+      onUpdateListData({...listData, ...ldRef.current});
+    }, 800);
   };
 
   useEffect(()=>{ ldRef.current.checked=checked; scheduleSave(); },[checked]);
@@ -4299,11 +4301,14 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
       })()}
       {activeTab==="calendar"&&renderCalendar()}
       {activeTab==="map"&&<TripListTab trip={trip} onUpdate={onUpdate} pal={pal}
-        listData={listData?.[trip.id]||{}} onUpdateListData={d=>onUpdateListData(p=>({...p,[trip.id]:{...(p[trip.id]||{}),...(typeof d==="function"?d(p[trip.id]||{}):d)}}))}/>}
+        listData={listData?.[trip.id]||{}} onUpdateListData={d=>{
+          const next = typeof d==="function" ? d(listData?.[trip.id]||{}) : d;
+          onUpdateListData({...listData, [trip.id]:next});
+        }}/>}
       {activeTab==="wallet"&&<WalletTab trip={trip} onUpdate={onUpdate}/>}
       {activeTab==="bookmark"&&<BookmarkTab trip={trip} onUpdate={onUpdate}
         bookmarks={listData?.[trip.id]?.bookmarks||[]}
-        onUpdateBookmarks={bks=>onUpdateListData(p=>({...p,[trip.id]:{...(p[trip.id]||{}),bookmarks:bks}}))}/> }
+        onUpdateBookmarks={bks=>onUpdateListData({...listData,[trip.id]:{...(listData?.[trip.id]||{}),bookmarks:bks}})}/> }
 
       {/* ── 固定底部導覽列 ── */}
       <div style={{
@@ -4486,12 +4491,12 @@ function AppInner(){
       if(d.exists()) setPrefs(d.data().prefs||{...DEFAULT_PREFS});
     });
 
-    // 讀取清單資料
-    getDoc(doc(fbDb,"listData",user.uid)).then(d=>{
+    // 即時監聽清單資料（onSnapshot 確保跨裝置同步）
+    const unsubList = onSnapshot(doc(fbDb,"listData",user.uid), d=>{
       if(d.exists()) setListData(d.data()||{});
     });
 
-    return ()=>{ unsubTrips(); };
+    return ()=>{ unsubTrips(); unsubList(); };
   },[user]);
 
   // 存偏好到 Firestore
@@ -4499,8 +4504,6 @@ function AppInner(){
     if(!user) return;
     setDoc(doc(fbDb,"users",user.uid),{prefs},{merge:true}).catch(()=>{});
   },[prefs]);
-
-  // listData 改為在 onUpdateListData 內即時存 Firestore，不需要 useEffect
 
   const handleAdd = async data=>{
     if(!user) return;
@@ -4568,12 +4571,9 @@ function AppInner(){
             trips={trips} prefs={prefs} onUpdatePrefs={setPrefs}
             onSelect={setCurrentId} onAdd={handleAdd} onDelete={handleDelete} onEditTrip={handleEdit}
             listData={listData} onUpdateListData={updater=>{
-              setListData(prev=>{
-                const next = typeof updater==="function" ? updater(prev) : {...prev,...updater};
-                // 立即存 Firestore
-                if(user) setDoc(doc(fbDb,"listData",user.uid), next, {merge:true}).catch(()=>{});
-                return next;
-              });
+              const next = typeof updater==="function" ? updater(listData) : updater;
+              setDoc(doc(fbDb,"listData",user.uid), next, {merge:true}).catch(()=>{});
+              setListData(next);
             }}
             user={user}
             initialExport={exportId===cur?.id}
