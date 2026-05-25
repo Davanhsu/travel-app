@@ -540,9 +540,9 @@ function CompactTimePicker({value, onChange}){
 const CLOUDINARY_URL = "https://api.cloudinary.com/v1_1/dq7gjb7wa/image/upload";
 const CLOUDINARY_PRESET = "hafnice-traveldale";
 
-async function compressFile(file, maxW=1200, quality=0.82){
-  // 小於 500KB 不壓縮
-  if(file.size < 500*1024) return file;
+async function compressFile(file, maxW=900, quality=0.75){
+  // 小於 300KB 不壓縮
+  if(file.size < 300*1024) return file;
   return new Promise(res=>{
     const reader = new FileReader();
     reader.onload = ev=>{
