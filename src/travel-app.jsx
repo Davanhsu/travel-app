@@ -3687,8 +3687,10 @@ function TripExportView({trip, pal, onClose, bookmarks=[]}){
             <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:24}}>
               <div style={{width:5,height:32,background:pal.bg,borderRadius:3,WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"}}/>
               <div>
-                <div style={{fontFamily:"Georgia,serif",fontSize:26,fontWeight:700,color:"#2E2824"}}>Day {day.dateNumber}</div>
-                <div style={{fontSize:13,color:"#A09890"}}>{day.fullDate} {day.weekDay}</div>
+                <div style={{fontFamily:"Georgia,serif",fontSize:26,fontWeight:700,color:"#2E2824"}}>
+                  {["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][parseInt(day.month)-1]} {parseInt(day.dateNumber)}
+                </div>
+                <div style={{fontSize:13,color:"#A09890"}}>{day.weekDay} · {day.fullDate}</div>
               </div>
             </div>
             {day.schedule.length===0&&<div style={{fontSize:13,color:"#A09890",fontStyle:"italic"}}>無行程安排</div>}
