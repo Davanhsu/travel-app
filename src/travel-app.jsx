@@ -582,24 +582,12 @@ function EventImageUploader({images, onChange}){
     const toUpload = files.slice(0, remaining);
     setUploadError(null);
 
-    // 立即顯示本地預覽（樂觀更新）
-    const localUrls = await Promise.all(toUpload.map(f=>new Promise(res=>{
-      const r=new FileReader(); r.onload=ev=>res(ev.target.result); r.readAsDataURL(f);
-    })));
-    onChange([...(images||[]), ...localUrls]);
+    // 先直接上傳 Cloudinary（不做 base64 預覽，避免 Firestore 超限）
     setUploading(true);
-
-    // 背景上傳 Cloudinary，完成後替換 URL
     try{
       const uid = fbAuth.currentUser?.uid;
       const cloudUrls = await Promise.all(toUpload.map(f=>uploadToCloudinary(f, uid)));
-      // 把剛加入的 localUrls 替換成 cloudUrls
-      onChange(prev=>{
-        const newImgs = [...prev];
-        const startIdx = newImgs.length - localUrls.length;
-        cloudUrls.forEach((url,i)=>{ newImgs[startIdx+i]=url; });
-        return newImgs;
-      });
+      onChange([...(images||[]), ...cloudUrls]);
     } catch(err){
       const msg = err?.message||"";
       if(msg.includes("10MB")) setUploadError("檔案超過 10MB，請選擇較小的圖片");
@@ -633,11 +621,11 @@ function EventImageUploader({images, onChange}){
           </button>
         )}
       </div>
-      {(images||[]).length > 0 && (
-        <div style={{fontSize:10,color:TEXT_L,marginTop:6}}>{(images||[]).length}/10 張 · 點縮圖右上角 ✕ 可移除</div>
-      )}
-      {uploading&&<div style={{fontSize:11,color:TEXT_L,marginTop:4}}>上傳中…</div>}
-      {uploadError&&<div style={{fontSize:11,color:"#B04A38",marginTop:4,display:"flex",alignItems:"center",gap:4}}><Icon name="x" size={11} color="#B04A38" sw={2}/>{uploadError}</div>}
+      {uploading&&<div style={{fontSize:11,color:TEXT_L,marginTop:4,display:"flex",alignItems:"center",gap:4}}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={TEXT_L} strokeWidth="2" strokeLinecap="round"><path d="M12 3a9 9 0 100 18A9 9 0 0012 3z" strokeDasharray="30" strokeDashoffset="8"/></svg>
+        上傳中，請稍候…
+      </div>}
+      {uploadError&&<div style={{fontSize:11,color:"#B04A38",marginTop:4}}>{uploadError}</div>}
     </div>
   );
 }
@@ -1002,21 +990,10 @@ function BookmarkTab({ trip, onUpdate, bookmarks=[], onUpdateBookmarks }){
   const handleImgFiles = async e => {
     const files=Array.from(e.target.files), rem=10-fImages.length, toUpload=files.slice(0,rem);
     setImgUploadError(null);
-    // 立即顯示本地預覽
-    const localUrls = await Promise.all(toUpload.map(f=>new Promise(res=>{
-      const r=new FileReader(); r.onload=ev=>res(ev.target.result); r.readAsDataURL(f);
-    })));
-    setFImages(p=>[...p,...localUrls]);
-    // 背景上傳後替換
     try{
       const uid = fbAuth.currentUser?.uid;
       const cloudUrls = await Promise.all(toUpload.map(f=>uploadToCloudinary(f, uid)));
-      setFImages(p=>{
-        const n=[...p];
-        const start=n.length-localUrls.length;
-        cloudUrls.forEach((url,i)=>{ n[start+i]=url; });
-        return n;
-      });
+      setFImages(p=>[...p,...cloudUrls]);
     } catch(err){
       const msg=err?.message||"";
       if(msg.includes("10MB")) setImgUploadError("檔案超過 10MB");
@@ -2883,15 +2860,8 @@ function WalletTab({trip,onUpdate}){
             <div>
               <input ref={photoRef} type="file" accept="image/*" onChange={async e=>{
                 const f=e.target.files[0]; if(!f) return;
-                // 立即預覽
-                const r=new FileReader();
-                r.onload=async ev=>{
-                  setFPhoto(ev.target.result);
-                  // 背景上傳替換
-                  try{ setFPhoto(await uploadToCloudinary(f,fbAuth.currentUser?.uid)); }
-                  catch{ /* 保留本地預覽 */ }
-                };
-                r.readAsDataURL(f);
+                try{ setFPhoto(await uploadToCloudinary(f,fbAuth.currentUser?.uid)); }
+                catch{ /* 上傳失敗不顯示 */ }
               }} style={{display:"none"}}/>
               {fPhoto
                 ? <div style={{position:"relative",width:40,height:40,borderRadius:12,overflow:"hidden"}}>
