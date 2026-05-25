@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 // ─── Firebase ───
 import { initializeApp } from "firebase/app";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect, getRedirectResult, signOut, onAuthStateChanged } from "firebase/auth";
-import { getFirestore, doc, getDoc, setDoc, collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, getDocs, enableIndexedDbPersistence } from "firebase/firestore";
+import { getFirestore, doc, getDoc, setDoc, collection, query, where, onSnapshot, addDoc, updateDoc, deleteDoc, getDocs, initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: "AIzaSyAdHjcnI678F2XvpLcNNMpbDBRR8bkLYY0",
@@ -17,10 +17,16 @@ const firebaseConfig = {
 
 const fbApp  = initializeApp(firebaseConfig);
 const fbAuth = getAuth(fbApp);
-const fbDb   = getFirestore(fbApp);
 
-// 啟用離線快取
-try { enableIndexedDbPersistence(fbDb); } catch(e) {}
+// 啟用離線快取（支援多分頁 + PWA）
+let fbDb;
+try {
+  fbDb = initializeFirestore(fbApp, {
+    localCache: persistentLocalCache({tabManager: persistentMultipleTabManager()})
+  });
+} catch(e) {
+  fbDb = getFirestore(fbApp);
+}
 
 // ─────────────────────────────────────────────────────────────
 // SVG Icons
@@ -574,23 +580,30 @@ function EventImageUploader({images, onChange}){
   const ref = useRef();
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState(null);
+  const [previews, setPreviews] = useState([]); // 本地預覽（上傳中暫存）
 
   const handleFiles = async e => {
     const files = Array.from(e.target.files);
     if(!files.length) return;
     const remaining = 10 - (images||[]).length;
     const toUpload = files.slice(0, remaining);
-    setUploadError(null);
+    setUploadError(null); setUploading(true);
 
-    // 先直接上傳 Cloudinary（不做 base64 預覽，避免 Firestore 超限）
-    setUploading(true);
+    // 立即顯示本地預覽
+    const localUrls = await Promise.all(toUpload.map(f=>new Promise(res=>{
+      const r=new FileReader(); r.onload=ev=>res(ev.target.result); r.readAsDataURL(f);
+    })));
+    setPreviews(localUrls);
+
     try{
       const uid = fbAuth.currentUser?.uid;
       const cloudUrls = await Promise.all(toUpload.map(f=>uploadToCloudinary(f, uid)));
-      onChange([...(images||[]), ...cloudUrls]);
+      setPreviews([]);
+      onChange([...(images||[]), ...cloudUrls]); // 只有 Cloudinary URL 才存
     } catch(err){
+      setPreviews([]);
       const msg = err?.message||"";
-      if(msg.includes("10MB")) setUploadError("檔案超過 10MB，請選擇較小的圖片");
+      if(msg.includes("10MB")) setUploadError("檔案超過 10MB");
       else if(msg.includes("格式")) setUploadError("不支援此檔案格式");
       else setUploadError("上傳失敗，請稍後再試");
     }
@@ -598,24 +611,29 @@ function EventImageUploader({images, onChange}){
     e.target.value = "";
   };
   const removeImg = idx => onChange((images||[]).filter((_,i)=>i!==idx));
+  const allImgs = [...(images||[]), ...previews]; // 顯示時合併
   return (
     <div>
       <input ref={ref} type="file" accept="image/*" multiple onChange={handleFiles} style={{display:"none"}}/>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-        {(images||[]).map((src,i)=>(
-          <div key={i} style={{position:"relative",width:72,height:72,borderRadius:12,overflow:"hidden",flexShrink:0}}>
-            <img src={src} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
-            <button onClick={()=>removeImg(i)}
-              style={{position:"absolute",top:3,right:3,width:20,height:20,borderRadius:"50%",background:"rgba(0,0,0,.55)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
-              <Icon name="x" size={10} color="#fff" sw={2.5}/>
-            </button>
-          </div>
-        ))}
-        {(images||[]).length < 6 && (
+        {allImgs.map((src,i)=>{
+          const isPreview = i >= (images||[]).length;
+          return(
+            <div key={i} style={{position:"relative",width:72,height:72,borderRadius:12,overflow:"hidden",flexShrink:0,opacity:isPreview?.6:1}}>
+              <img src={src} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+              {isPreview&&<div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(0,0,0,.3)"}}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2"><path d="M12 3a9 9 0 100 18A9 9 0 0012 3z" strokeDasharray="30" strokeDashoffset="8"/></svg>
+              </div>}
+              {!isPreview&&<button onClick={()=>removeImg(i)}
+                style={{position:"absolute",top:3,right:3,width:20,height:20,borderRadius:"50%",background:"rgba(0,0,0,.55)",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                <Icon name="x" size={10} color="#fff" sw={2.5}/>
+              </button>}
+            </div>
+          );
+        })}
+        {allImgs.length < 10 && !uploading && (
           <button onClick={()=>ref.current.click()}
-            style={{width:72,height:72,borderRadius:12,border:`2px dashed ${BORDER}`,background:APP_BG,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,color:TEXT_L,flexShrink:0,transition:"all .2s"}}
-            onMouseEnter={e=>{e.currentTarget.style.borderColor="#7A8286";e.currentTarget.style.color=TEXT_M;}}
-            onMouseLeave={e=>{e.currentTarget.style.borderColor=BORDER;e.currentTarget.style.color=TEXT_L;}}>
+            style={{width:72,height:72,borderRadius:12,border:`2px dashed ${BORDER}`,background:APP_BG,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:4,color:TEXT_L,flexShrink:0}}>
             <Icon name="camera" size={18} color="currentColor" sw={1.4}/>
             <span style={{fontSize:9,fontFamily:"inherit"}}>新增照片</span>
           </button>
