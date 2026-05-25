@@ -1596,7 +1596,7 @@ function TripListTab({trip, onUpdate, pal, listData={}, onUpdateListData}){
   const [newItemText,  setNewItemText]  = useState({});
   const [newPhrase,    setNewPhrase]    = useState("");
 
-  // 從 localStorage 初始化
+  // 從 listData prop 初始化
   const [checked,      setChecked]      = useState(()=>listData.checked||{});
   const [customItems,  setCustomItems]  = useState(()=>listData.customItems||{});
   const [deletedItems, setDeletedItems] = useState(()=>{
@@ -1609,6 +1609,26 @@ function TripListTab({trip, onUpdate, pal, listData={}, onUpdateListData}){
   const [cards,        setCards]        = useState(()=>listData.cards||[]);
   const [memoText,     setMemoText]     = useState(()=>listData.memoText||"");
   const [customPhrases,setCustomPhrases]= useState(()=>listData.customPhrases||[]);
+
+  // 當 listData 從 Firestore 更新時（跨裝置同步），同步 local state
+  const prevListDataRef = useRef(listData);
+  useEffect(()=>{
+    if(prevListDataRef.current===listData) return;
+    prevListDataRef.current=listData;
+    // 只在外部資料比 local 新時才更新（避免覆蓋自己剛存的）
+    if(listData.checked!==undefined) setChecked(listData.checked||{});
+    if(listData.customItems!==undefined) setCustomItems(listData.customItems||{});
+    if(listData.renamedItems!==undefined) setRenamedItems(listData.renamedItems||{});
+    if(listData.emergInfo!==undefined) setEmergInfo(listData.emergInfo||{});
+    if(listData.cards!==undefined) setCards(listData.cards||[]);
+    if(listData.memoText!==undefined) setMemoText(listData.memoText||"");
+    if(listData.customPhrases!==undefined) setCustomPhrases(listData.customPhrases||[]);
+    if(listData.deletedItems!==undefined){
+      const d=listData.deletedItems||{};
+      setDeletedItems(Object.fromEntries(Object.entries(d).map(([k,v])=>[k,new Set(v)])));
+    }
+    if(listData.deletedEmerg!==undefined) setDeletedEmerg(new Set(listData.deletedEmerg||[]));
+  },[listData]);
 
   // 持久化 — 用 ref 存最新值，debounce 存儲避免過頻繁寫入
   const ldRef = useRef({});
@@ -4300,11 +4320,9 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
         );
       })()}
       {activeTab==="calendar"&&renderCalendar()}
-      {activeTab==="map"&&<TripListTab trip={trip} onUpdate={onUpdate} pal={pal}
-        listData={listData?.[trip.id]||{}} onUpdateListData={d=>{
-          const next = typeof d==="function" ? d(listData?.[trip.id]||{}) : d;
-          onUpdateListData({...listData, [trip.id]:next});
-        }}/>}
+      {activeTab==="map"&&<TripListTab key={trip.id} trip={trip} onUpdate={onUpdate} pal={pal}
+        listData={listData?.[trip.id]||{}}
+        onUpdateListData={subData=>onUpdateListData({...listData,[trip.id]:{...(listData?.[trip.id]||{}),...subData}})}/> }
       {activeTab==="wallet"&&<WalletTab trip={trip} onUpdate={onUpdate}/>}
       {activeTab==="bookmark"&&<BookmarkTab trip={trip} onUpdate={onUpdate}
         bookmarks={listData?.[trip.id]?.bookmarks||[]}
@@ -4570,10 +4588,9 @@ function AppInner(){
         ?<TripDetailPage trip={cur} onBack={()=>setCurrentId(null)} onUpdate={handleUpdate}
             trips={trips} prefs={prefs} onUpdatePrefs={setPrefs}
             onSelect={setCurrentId} onAdd={handleAdd} onDelete={handleDelete} onEditTrip={handleEdit}
-            listData={listData} onUpdateListData={updater=>{
-              const next = typeof updater==="function" ? updater(listData) : updater;
-              setListData(next); // 樂觀更新 UI
-              setDoc(doc(fbDb,"listData",user.uid), next, {merge:true}).catch(()=>{});
+            listData={listData} onUpdateListData={next=>{
+              setListData(next);
+              setDoc(doc(fbDb,"listData",user.uid), next).catch(()=>{});
             }}
             user={user}
             initialExport={exportId===cur?.id}
