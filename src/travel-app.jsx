@@ -540,16 +540,44 @@ function CompactTimePicker({value, onChange}){
 const CLOUDINARY_URL = "https://api.cloudinary.com/v1_1/dq7gjb7wa/image/upload";
 const CLOUDINARY_PRESET = "hafnice-traveldale";
 
+async function compressFile(file, maxW=1200, quality=0.82){
+  // 小於 500KB 不壓縮
+  if(file.size < 500*1024) return file;
+  return new Promise(res=>{
+    const reader = new FileReader();
+    reader.onload = ev=>{
+      const img = new Image();
+      img.onload = ()=>{
+        const scale = Math.min(1, maxW/Math.max(img.width, img.height));
+        const w = Math.round(img.width*scale);
+        const h = Math.round(img.height*scale);
+        const c = document.createElement("canvas");
+        c.width=w; c.height=h;
+        c.getContext("2d").drawImage(img,0,0,w,h);
+        c.toBlob(blob=>{
+          res(blob ? new File([blob], file.name, {type:"image/jpeg"}) : file);
+        }, "image/jpeg", quality);
+      };
+      img.onerror = ()=>res(file);
+      img.src = ev.target.result;
+    };
+    reader.onerror = ()=>res(file);
+    reader.readAsDataURL(file);
+  });
+}
+
 async function uploadToCloudinary(file, uid){
-  // 檔案驗證
-  const MAX_SIZE = 10 * 1024 * 1024; // 10MB
+  const MAX_SIZE = 10 * 1024 * 1024;
   const ALLOWED = ["image/jpeg","image/png","image/webp","image/heic","image/heif"];
   if(file.size > MAX_SIZE) throw new Error("檔案超過 10MB 限制");
   if(!ALLOWED.includes(file.type)&&!file.name.match(/\.(jpg|jpeg|png|webp|heic)$/i))
     throw new Error("不支援的檔案格式");
 
+  // 上傳前先壓縮
+  const compressed = await compressFile(file);
+
   const fd = new FormData();
-  fd.append("file", file);
+  fd.append("file", compressed);
   fd.append("upload_preset", CLOUDINARY_PRESET);
   if(uid){
     fd.append("folder", "travel_app/users/"+uid);
