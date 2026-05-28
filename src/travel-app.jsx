@@ -1013,25 +1013,33 @@ function SpotCatIcon({ id, size=22, color="currentColor" }){
 function BookmarkTab({ trip, onUpdate, bookmarks=[], onUpdateBookmarks }){
   const pal        = PALETTE[trip.paletteIdx??0];
   const [selCat,   setSelCat]   = useState("all");
+  const [selArea,  setSelArea]  = useState("all");
   const [showForm, setShowForm] = useState(false);
   const [editItem, setEditItem] = useState(null);
   const [delTarget,setDelTarget]= useState(null);
   const [fName,   setFName]   = useState("");
   const [fCat,    setFCat]    = useState("restaurant");
+  const [fArea,   setFArea]   = useState("");
   const [fAddr,   setFAddr]   = useState("");
   const [fNote,   setFNote]   = useState("");
   const [fImages, setFImages] = useState([]);
   const imgRef = useRef();
 
-  const openAdd = () => { setEditItem(null); setFName(""); setFCat("restaurant"); setFAddr(""); setFNote(""); setFImages([]); setShowForm(true); };
-  const openEdit = item => { setEditItem(item); setFName(item.name); setFCat(item.cat); setFAddr(item.addr||""); setFNote(item.note||""); setFImages(item.images||[]); setShowForm(true); };
+  const openAdd = () => { setEditItem(null); setFName(""); setFCat("restaurant"); setFArea(""); setFAddr(""); setFNote(""); setFImages([]); setShowForm(true); };
+  const openEdit = item => { setEditItem(item); setFName(item.name); setFCat(item.cat); setFArea(item.area||""); setFAddr(item.addr||""); setFNote(item.note||""); setFImages(item.images||[]); setShowForm(true); };
   const saveSpot = () => {
     if(!fName.trim()) return;
-    const spot = { id:editItem?.id||genId(), name:fName.trim(), cat:fCat, addr:fAddr.trim(), note:fNote.trim(), images:fImages };
+    const spot = { id:editItem?.id||genId(), name:fName.trim(), cat:fCat, area:fArea.trim(), addr:fAddr.trim(), note:fNote.trim(), images:fImages };
     onUpdateBookmarks(editItem ? bookmarks.map(b=>b.id===editItem.id?spot:b) : [...bookmarks,spot]);
     setShowForm(false);
   };
   const delSpot = id => { onUpdateBookmarks(bookmarks.filter(b=>b.id!==id)); setDelTarget(null); };
+
+  // 地區清單（從現有景點取得）
+  const areas = ["all", ...Array.from(new Set(bookmarks.map(b=>b.area||"").filter(Boolean))).sort((a,b)=>a.localeCompare(b,"zh"))];
+  const filtered = bookmarks
+    .filter(b=>selCat==="all"||b.cat===selCat)
+    .filter(b=>selArea==="all"||(b.area||"")=== selArea);
   const [imgUploadError, setImgUploadError] = useState(null);
   const handleImgFiles = async e => {
     const files=Array.from(e.target.files), rem=10-fImages.length, toUpload=files.slice(0,rem);
@@ -1051,30 +1059,8 @@ function BookmarkTab({ trip, onUpdate, bookmarks=[], onUpdateBookmarks }){
   const openMaps = item => {
     window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.addr||item.name)}`,"_blank");
   };
-  const filtered  = selCat==="all" ? bookmarks : bookmarks.filter(b=>b.cat===selCat);
-  const catCount  = id => bookmarks.filter(b=>b.cat===id).length;
-
-  const [detailItem,   setDetailItem]   = useState(null);
-  const [viewMode, setViewMode] = useState("grid");
-
-  // 依地址關鍵字分區
-  const getRegion = addr => {
-    if(!addr) return "未分類";
-    const m = addr.match(/[\u4e00-\u9fff]{2,4}[區市町村]/);
-    if(m) return m[0];
-    const m2 = addr.match(/[A-Z][a-z]+ ?[A-Z]?[a-z]*/);
-    if(m2) return m2[0];
-    return addr.slice(0,6)||"未分類";
-  };
-  const byRegion = (() => {
-    const map = {};
-    filtered.forEach(item=>{
-      const r = getRegion(item.addr);
-      if(!map[r]) map[r]=[];
-      map[r].push(item);
-    });
-    return Object.entries(map).sort(([a],[b])=>a.localeCompare(b,"zh"));
-  })();
+  const catCount = id => bookmarks.filter(b=>b.cat===id).length;
+  const [detailItem, setDetailItem] = useState(null);
 
   return(
     <div style={{padding:"16px 0 24px"}}>
@@ -1106,58 +1092,22 @@ function BookmarkTab({ trip, onUpdate, bookmarks=[], onUpdateBookmarks }){
         </button>
       </div>
 
-      {/* 格狀 / 地區 切換 */}
-      <div style={{padding:"0 16px",marginBottom:12}}>
-        <div style={{display:"inline-flex",background:APP_BG,borderRadius:12,padding:3,border:`1px solid ${BORDER}`,gap:2}}>
-          {[{id:"grid",label:"格狀"},{id:"region",label:"地區"}].map(m=>{
-            const sel=viewMode===m.id;
-            return <button key={m.id} onClick={()=>setViewMode(m.id)}
-              style={{padding:"5px 14px",borderRadius:9,background:sel?pal.bg:"transparent",color:sel?pal.fg:TEXT_M,fontSize:11,border:"none",cursor:"pointer",fontFamily:"inherit",fontWeight:sel?600:400,transition:"all .15s"}}>
-              {m.label}
-            </button>;
-          })}
-        </div>
-      </div>
-
-      {/* 地區模式 */}
-      {viewMode==="region"&&filtered.length>0&&(
-        <div style={{padding:"0 16px"}}>
-          {byRegion.map(([region,items])=>(
-            <div key={region} style={{marginBottom:16}}>
-              <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:8}}>
-                <div style={{width:4,height:16,background:pal.bg,borderRadius:2}}/>
-                <span style={{fontSize:12,fontWeight:700,color:TEXT_D}}>{region}</span>
-                <span style={{fontSize:10,color:TEXT_L}}>({items.length})</span>
-              </div>
-              <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                {items.map(item=>{
-                  const catInfo=SPOT_CATS.find(c=>c.id===item.cat)||SPOT_CATS[0];
-                  const thumb=item.images&&item.images.length>0?item.images[0]:null;
-                  return(
-                    <div key={item.id} onClick={()=>setDetailItem(item)}
-                      style={{display:"flex",alignItems:"center",gap:10,background:CARD_BG,borderRadius:14,padding:"10px 12px",cursor:"pointer",boxShadow:"0 1px 4px rgba(0,0,0,.05)"}}>
-                      <div style={{width:44,height:44,borderRadius:10,overflow:"hidden",flexShrink:0,background:`${pal.bg}20`,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                        {thumb?<img src={thumb} alt="" style={{width:"100%",height:"100%",objectFit:"cover"}}/>:<SpotCatIcon id={item.cat} size={20} color={pal.bg}/>}
-                      </div>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:13,fontWeight:600,color:TEXT_D,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.name}</div>
-                        <div style={{fontSize:10,color:TEXT_L,marginTop:2,display:"flex",alignItems:"center",gap:4}}>
-                          <SpotCatIcon id={item.cat} size={10} color={TEXT_L}/>{catInfo.label}
-                          {item.addr&&<span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>· {item.addr}</span>}
-                        </div>
-                      </div>
-                      <Icon name="chevron-right" size={14} color={BORDER}/>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+      {/* 地區篩選 Tab（有地區資料才顯示）*/}
+      {areas.length > 1 && (
+        <div style={{paddingLeft:16,paddingRight:16,marginBottom:10}}>
+          <div style={{display:"flex",gap:5,overflowX:"auto",scrollbarWidth:"none",WebkitOverflowScrolling:"touch",paddingBottom:3}}>
+            {areas.map(a=>(
+              <button key={a} onClick={()=>setSelArea(a)}
+                style={{display:"flex",alignItems:"center",gap:4,padding:"5px 12px",borderRadius:20,border:`1.5px solid ${selArea===a?pal.bg:BORDER}`,background:selArea===a?pal.bg:CARD_BG,color:selArea===a?pal.fg:TEXT_M,fontSize:11,cursor:"pointer",fontFamily:"inherit",transition:"all .15s",flexShrink:0,whiteSpace:"nowrap"}}>
+                {a==="all"?"全部地區":a}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 
-      {/* 空狀態 — 只在 grid 模式且無景點時顯示 */}
-      {viewMode==="grid"&&filtered.length===0&&(
+      {/* 空狀態 */}
+      {filtered.length===0&&(
         <div style={{textAlign:"center",padding:"48px 0"}}>
           <div style={{display:"flex",justifyContent:"center",marginBottom:12}}><Icon name="bookmark" size={36} color={BORDER} sw={1}/></div>
           <div style={{fontSize:13,color:TEXT_L,fontStyle:"italic"}}>{selCat==="all"?"尚無收藏景點":`尚無${SPOT_CATS.find(c=>c.id===selCat)?.label}景點`}</div>
@@ -1165,8 +1115,8 @@ function BookmarkTab({ trip, onUpdate, bookmarks=[], onUpdateBookmarks }){
         </div>
       )}
 
-      {/* 4×N 格狀（僅格狀模式）*/}
-      {viewMode==="grid"&&filtered.length>0&&(
+      {/* 4×N 格狀 */}
+      {filtered.length>0&&(
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:2}}>
           {filtered.map(item=>(
             <div key={item.id} onClick={()=>setDetailItem(item)}
@@ -1182,7 +1132,7 @@ function BookmarkTab({ trip, onUpdate, bookmarks=[], onUpdateBookmarks }){
               }
               <div style={{position:"absolute",bottom:0,left:0,right:0,background:"linear-gradient(to top,rgba(0,0,0,.65) 0%,transparent 100%)",padding:"14px 4px 4px"}}>
                 <div style={{fontSize:9,color:"#fff",fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",lineHeight:1.3}}>{item.name}</div>
-                <div style={{fontSize:8,color:"rgba(255,255,255,.75)"}}>{(SPOT_CATS.find(c=>c.id===item.cat)||SPOT_CATS[0]).label}</div>
+                <div style={{fontSize:8,color:"rgba(255,255,255,.75)"}}>{item.area||(SPOT_CATS.find(c=>c.id===item.cat)||SPOT_CATS[0]).label}</div>
               </div>
               {item.images&&item.images.length>1&&(
                 <div style={{position:"absolute",top:6,right:6,background:"rgba(0,0,0,.5)",borderRadius:6,padding:"2px 5px",display:"flex",alignItems:"center",gap:3}}>
@@ -1221,12 +1171,17 @@ function BookmarkTab({ trip, onUpdate, bookmarks=[], onUpdateBookmarks }){
                   )}
                 </div>
               )}
-              {/* 分類標籤 + 名稱 */}
-              <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:7}}>
+              {/* 分類標籤 + 地區 + 名稱 */}
+              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:7,flexWrap:"wrap"}}>
                 <div style={{display:"flex",alignItems:"center",gap:4,background:APP_BG,border:`1px solid ${BORDER}`,borderRadius:20,padding:"3px 9px"}}>
                   <SpotCatIcon id={item.cat} size={12} color={pal.bg}/>
                   <span style={{fontSize:10,color:pal.bg,fontWeight:600}}>{catInfo.label}</span>
                 </div>
+                {item.area&&(
+                  <div style={{background:pal.bg+"18",border:`1px solid ${pal.bg}40`,borderRadius:20,padding:"3px 9px",fontSize:10,color:pal.bg,fontWeight:600}}>
+                    {item.area}
+                  </div>
+                )}
               </div>
               <div style={{fontFamily:"Georgia,serif",fontSize:17,fontWeight:700,color:TEXT_D,marginBottom:8}}>{item.name}</div>
               {/* 地址 */}
@@ -1281,6 +1236,23 @@ function BookmarkTab({ trip, onUpdate, bookmarks=[], onUpdateBookmarks }){
                 })}
               </div>
             ))}
+          </div>
+          {/* 地區 */}
+          <div>
+            <label style={{fontSize:11,color:TEXT_L,display:"block",marginBottom:5,letterSpacing:"0.07em",textTransform:"uppercase"}}>地區（選填）</label>
+            <input value={fArea} onChange={e=>setFArea(e.target.value)} placeholder="例如：新宿區、澀谷、明洞…"
+              style={{width:"100%",padding:"11px 14px",border:`1.5px solid ${BORDER}`,borderRadius:14,background:APP_BG,fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none"}}/>
+            {/* 快速選擇已有地區 */}
+            {areas.filter(a=>a!=="all").length>0&&(
+              <div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:7}}>
+                {areas.filter(a=>a!=="all").map(a=>(
+                  <button key={a} onClick={()=>setFArea(a)}
+                    style={{padding:"4px 10px",borderRadius:12,background:fArea===a?pal.bg:APP_BG,border:`1px solid ${fArea===a?pal.bg:BORDER}`,color:fArea===a?pal.fg:TEXT_M,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
+                    {a}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           {/* 地址 — fontSize:16 防 iOS 縮放 */}
           <div>
