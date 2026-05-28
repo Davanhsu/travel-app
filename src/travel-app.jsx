@@ -1237,35 +1237,35 @@ function BookmarkTab({ trip, onUpdate, bookmarks=[], onUpdateBookmarks }){
               </div>
             ))}
           </div>
-          {/* 地區 */}
-          <div>
-            <label style={{fontSize:11,color:TEXT_L,display:"block",marginBottom:5,letterSpacing:"0.07em",textTransform:"uppercase"}}>地區（選填）</label>
-            <input value={fArea} onChange={e=>setFArea(e.target.value)} placeholder="例如：新宿區、澀谷、明洞…"
-              style={{width:"100%",padding:"11px 14px",border:`1.5px solid ${BORDER}`,borderRadius:14,background:APP_BG,fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none"}}/>
-            {/* 快速選擇已有地區 */}
-            {areas.filter(a=>a!=="all").length>0&&(
-              <div style={{display:"flex",gap:5,flexWrap:"wrap",marginTop:7}}>
-                {areas.filter(a=>a!=="all").map(a=>(
-                  <button key={a} onClick={()=>setFArea(a)}
-                    style={{padding:"4px 10px",borderRadius:12,background:fArea===a?pal.bg:APP_BG,border:`1px solid ${fArea===a?pal.bg:BORDER}`,color:fArea===a?pal.fg:TEXT_M,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
-                    {a}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          {/* 地址 — fontSize:16 防 iOS 縮放 */}
-          <div>
-            <label style={{fontSize:11,color:TEXT_L,display:"block",marginBottom:5,letterSpacing:"0.07em",textTransform:"uppercase"}}>地址</label>
-            <div style={{position:"relative"}}>
-              <input value={fAddr} onChange={e=>setFAddr(e.target.value)} placeholder="首爾市城東區聖水洞2街 44"
-                style={{width:"100%",padding:`11px ${fAddr?"40px":"14px"} 11px 14px`,border:`1.5px solid ${BORDER}`,borderRadius:14,background:APP_BG,fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none"}}/>
-              {fAddr&&(
-                <button onClick={()=>window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fAddr)}`,"_blank")}
-                  style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",width:26,height:26,borderRadius:8,background:pal.bg,border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  <Icon name="external-link" size={12} color="#fff"/>
-                </button>
+          {/* 地區 + 地址 並列 */}
+          <div style={{display:"flex",gap:8}}>
+            <div style={{flex:"0 0 36%"}}>
+              <label style={{fontSize:11,color:TEXT_L,display:"block",marginBottom:5,letterSpacing:"0.07em",textTransform:"uppercase"}}>地區</label>
+              <input value={fArea} onChange={e=>setFArea(e.target.value)} placeholder="新宿區…"
+                style={{width:"100%",padding:"11px 10px",border:`1.5px solid ${BORDER}`,borderRadius:14,background:APP_BG,fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none"}}/>
+              {areas.filter(a=>a!=="all").length>0&&(
+                <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:5}}>
+                  {areas.filter(a=>a!=="all").map(a=>(
+                    <button key={a} onClick={()=>setFArea(a)}
+                      style={{padding:"3px 8px",borderRadius:10,background:fArea===a?pal.bg:APP_BG,border:`1px solid ${fArea===a?pal.bg:BORDER}`,color:fArea===a?pal.fg:TEXT_M,fontSize:10,cursor:"pointer",fontFamily:"inherit"}}>
+                      {a}
+                    </button>
+                  ))}
+                </div>
               )}
+            </div>
+            <div style={{flex:1}}>
+              <label style={{fontSize:11,color:TEXT_L,display:"block",marginBottom:5,letterSpacing:"0.07em",textTransform:"uppercase"}}>地址</label>
+              <div style={{position:"relative"}}>
+                <input value={fAddr} onChange={e=>setFAddr(e.target.value)} placeholder="城東區聖水洞…"
+                  style={{width:"100%",padding:`11px ${fAddr?"36px":"10px"} 11px 10px`,border:`1.5px solid ${BORDER}`,borderRadius:14,background:APP_BG,fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none"}}/>
+                {fAddr&&(
+                  <button onClick={()=>window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fAddr)}`,"_blank")}
+                    style={{position:"absolute",right:6,top:"50%",transform:"translateY(-50%)",width:24,height:24,borderRadius:7,background:pal.bg,border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                    <Icon name="external-link" size={11} color="#fff"/>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
           {/* 介紹 */}
