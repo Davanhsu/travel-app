@@ -4399,8 +4399,74 @@ function LoginPage(){
   const [loading, setLoading] = useState(false);
   const [error,   setError]   = useState(null);
 
-  // 處理 redirect 登入回調
-  useEffect(()=>{
+  // 偵測 in-app browser
+  const ua = navigator.userAgent || "";
+  const isInAppBrowser =
+    /Line\//i.test(ua) ||
+    /Instagram/i.test(ua) ||
+    /FBAN|FBAV|FB_IAB/i.test(ua) ||
+    /Twitter/i.test(ua) ||
+    /MicroMessenger/i.test(ua) || // WeChat
+    (!window.chrome && /wv|WebView/i.test(ua));
+
+  const currentUrl = window.location.href;
+
+  if(isInAppBrowser){
+    const appName =
+      /Line\//i.test(ua) ? "LINE" :
+      /Instagram/i.test(ua) ? "Instagram" :
+      /FBAN|FBAV|FB_IAB/i.test(ua) ? "Facebook" :
+      /Twitter/i.test(ua) ? "Twitter" :
+      /MicroMessenger/i.test(ua) ? "WeChat" : "此 App";
+
+    return(
+      <div style={{minHeight:"100vh",background:"#EEECEA",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:"40px 24px",fontFamily:"'Noto Serif TC',serif"}}>
+        <div style={{marginBottom:28,textAlign:"center"}}>
+          <div style={{fontFamily:"Georgia,serif",fontSize:26,fontWeight:700,fontStyle:"italic",color:"#6A6058",marginBottom:6}}>My Travel Journal</div>
+        </div>
+        <div style={{background:"#F8F7F5",borderRadius:24,padding:"28px 24px",width:"100%",maxWidth:360,boxShadow:"0 8px 32px rgba(0,0,0,.08)"}}>
+          <div style={{textAlign:"center",marginBottom:16}}>
+            <div style={{fontSize:32,marginBottom:8}}>⚠️</div>
+            <div style={{fontSize:15,fontWeight:700,color:"#2E2824",marginBottom:8}}>請用瀏覽器開啟</div>
+            <div style={{fontSize:13,color:"#6A6058",lineHeight:1.7}}>
+              目前在 <strong>{appName}</strong> 內建瀏覽器中開啟，無法使用 Google 登入。
+            </div>
+          </div>
+          <div style={{background:"#EEECEA",borderRadius:14,padding:"14px 16px",marginBottom:16}}>
+            <div style={{fontSize:11,color:"#A09890",marginBottom:8,letterSpacing:"0.06em",textTransform:"uppercase"}}>請依照以下步驟操作</div>
+            {/Line\//i.test(ua) ? (
+              <div style={{fontSize:13,color:"#2E2824",lineHeight:2}}>
+                1. 點右下角 <strong>⋯</strong> 選單<br/>
+                2. 選擇「在瀏覽器中開啟」
+              </div>
+            ) : /Instagram|FBAN|FBAV/i.test(ua) ? (
+              <div style={{fontSize:13,color:"#2E2824",lineHeight:2}}>
+                1. 點右下角 <strong>⋯</strong> 選單<br/>
+                2. 選擇「在瀏覽器中開啟」
+              </div>
+            ) : (
+              <div style={{fontSize:13,color:"#2E2824",lineHeight:2}}>
+                1. 複製下方網址<br/>
+                2. 開啟 Safari 或 Chrome<br/>
+                3. 貼上網址並前往
+              </div>
+            )}
+          </div>
+          <button onClick={()=>{
+            navigator.clipboard?.writeText(currentUrl).catch(()=>{});
+            alert("網址已複製！請開啟 Safari 或 Chrome 貼上。");
+          }}
+            style={{width:"100%",padding:"13px 0",borderRadius:16,background:"#2E2824",color:"#fff",fontSize:14,fontWeight:600,border:"none",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+            複製網址
+          </button>
+        </div>
+        <div style={{fontSize:11,color:"#A09890",marginTop:20,textAlign:"center",maxWidth:280,lineHeight:1.7}}>
+          建議使用 Safari 或 Chrome 開啟，以確保所有功能正常運作
+        </div>
+      </div>
+    );
+  }
     setLoading(true);
     getRedirectResult(fbAuth)
       .then(result=>{ if(!result) setLoading(false); })
@@ -4455,6 +4521,10 @@ function LoginPage(){
 }
 
 function AppInner(){
+  // in-app browser 偵測（同 LoginPage）
+  const ua = navigator.userAgent||"";
+  const isInApp = /Line\//i.test(ua)||/Instagram/i.test(ua)||/FBAN|FBAV|FB_IAB/i.test(ua)||/Twitter/i.test(ua)||/MicroMessenger/i.test(ua)||(!window.chrome&&/wv|WebView/i.test(ua));
+  if(isInApp) return <LoginPage/>;
   const [user,    setUser]    = useState(undefined); // undefined=loading, null=logged out
   const [trips,   setTrips]   = useState([]);
   const [prefs,   setPrefs]   = useState({...DEFAULT_PREFS});
