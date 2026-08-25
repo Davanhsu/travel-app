@@ -1492,20 +1492,20 @@ function WeatherCard({trip, pal}){
   );
 }
 
-// ─── 打包清單項目（勾選 + 點文字編輯）───
-function ChecklistItem({item, done, onToggle, onRename, pal}){
+// ─── 打包清單項目（勾選 + 點文字編輯 + 久按排序）───
+function ChecklistItem({item, done, onToggle, onRename, pal, onMoveUp, onMoveDown, canUp, canDown}){
   const [editing, setEditing] = useState(false);
   const [val, setVal]         = useState(item);
+  const [reordering, setReordering] = useState(false);
   const inputRef              = useRef(null);
   const committedRef          = useRef(false);
+  const longPressTimer        = useRef(null);
 
-  // 同步外部 item 變化（但編輯中不覆蓋）
   useEffect(()=>{ if(!editing) setVal(item); },[item, editing]);
 
   useEffect(()=>{
     if(editing){
       committedRef.current = false;
-      // 用 setTimeout 避免 focus 觸發 scroll
       setTimeout(()=>inputRef.current?.focus({preventScroll:true}), 0);
     }
   },[editing]);
@@ -1518,24 +1518,59 @@ function ChecklistItem({item, done, onToggle, onRename, pal}){
     else setVal(item);
   };
 
+  const startLongPress = ()=>{
+    longPressTimer.current = setTimeout(()=>{
+      setReordering(true);
+    }, 500);
+  };
+  const cancelLongPress = ()=>{ clearTimeout(longPressTimer.current); };
+
   return(
     <div style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",borderBottom:`1px solid ${BORDER}`,minHeight:34}}>
-      <div onClick={e=>{e.stopPropagation();onToggle(e);}}
-        style={{width:20,height:20,borderRadius:6,border:`1.5px solid ${done?pal.bg:BORDER}`,background:done?pal.bg:"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,WebkitTapHighlightColor:"transparent"}}>
-        {done&&<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="#fff" strokeWidth="2"><path d="M2 6l3 3 5-5"/></svg>}
-      </div>
-      {editing
-        ? <input ref={inputRef} value={val}
-            onChange={e=>setVal(e.target.value)}
-            onBlur={commit}
-            onKeyDown={e=>{ if(e.key==="Enter"){ e.preventDefault(); commit(); } }}
-            style={{flex:1,fontSize:16,lineHeight:"20px",height:20,color:TEXT_D,background:"transparent",border:"none",borderBottom:`1px solid ${pal.bg}`,outline:"none",fontFamily:"inherit",padding:0}}/>
-        : <span
-            onClick={e=>{ if(done) return; e.stopPropagation(); setVal(item); setEditing(true); }}
-            style={{flex:1,fontSize:12,lineHeight:"20px",color:done?TEXT_L:TEXT_D,textDecoration:done?"line-through":"none",cursor:done?"default":"text",userSelect:"none",WebkitTapHighlightColor:"transparent"}}>
-            {item}
-          </span>
-      }
+      {reordering ? (
+        // 排序模式：顯示上下按鈕
+        <>
+          <div style={{display:"flex",flexDirection:"column",gap:1,flexShrink:0}}>
+            <button onClick={()=>{ if(canUp) onMoveUp(); }}
+              style={{width:24,height:18,border:"none",background:"none",cursor:canUp?"pointer":"default",opacity:canUp?1:.25,padding:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={pal.bg} strokeWidth="2.5" strokeLinecap="round"><path d="M5 15l7-7 7 7"/></svg>
+            </button>
+            <button onClick={()=>{ if(canDown) onMoveDown(); }}
+              style={{width:24,height:18,border:"none",background:"none",cursor:canDown?"pointer":"default",opacity:canDown?1:.25,padding:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={pal.bg} strokeWidth="2.5" strokeLinecap="round"><path d="M19 9l-7 7-7-7"/></svg>
+            </button>
+          </div>
+          <span style={{flex:1,fontSize:12,color:TEXT_D}}>{item}</span>
+          <button onClick={()=>setReordering(false)}
+            style={{fontSize:10,color:TEXT_L,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",padding:"2px 6px"}}>完成</button>
+        </>
+      ) : (
+        // 正常模式
+        <>
+          <div onClick={e=>{e.stopPropagation();onToggle(e);}}
+            style={{width:20,height:20,borderRadius:6,border:`1.5px solid ${done?pal.bg:BORDER}`,background:done?pal.bg:"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,WebkitTapHighlightColor:"transparent"}}>
+            {done&&<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="#fff" strokeWidth="2"><path d="M2 6l3 3 5-5"/></svg>}
+          </div>
+          {editing
+            ? <input ref={inputRef} value={val}
+                onChange={e=>setVal(e.target.value)}
+                onBlur={commit}
+                onKeyDown={e=>{ if(e.key==="Enter"){ e.preventDefault(); commit(); } }}
+                style={{flex:1,fontSize:16,lineHeight:"20px",height:20,color:TEXT_D,background:"transparent",border:"none",borderBottom:`1px solid ${pal.bg}`,outline:"none",fontFamily:"inherit",padding:0}}/>
+            : <span
+                onClick={e=>{ if(done) return; e.stopPropagation(); setVal(item); setEditing(true); }}
+                onMouseDown={startLongPress}
+                onMouseUp={cancelLongPress}
+                onMouseLeave={cancelLongPress}
+                onTouchStart={startLongPress}
+                onTouchEnd={cancelLongPress}
+                onTouchMove={cancelLongPress}
+                style={{flex:1,fontSize:12,lineHeight:"20px",color:done?TEXT_L:TEXT_D,textDecoration:done?"line-through":"none",cursor:done?"default":"text",userSelect:"none",WebkitTapHighlightColor:"transparent"}}>
+                {item}
+              </span>
+          }
+        </>
+      )}
     </div>
   );
 }
@@ -1671,7 +1706,20 @@ function TripListTab({trip, onUpdate, pal, listData={}, onUpdateListData}){
     return {id:c.id, label:c.label, total:ai.length, done:ai.filter(it=>checked[c.id]?.[it]).length};
   });
 
-  const [confirmDel,  setConfirmDel]  = useState(null);
+  const moveItem = (catId, fromIdx, toIdx) => {
+    const rows = checklistRows;
+    if(toIdx < 0 || toIdx >= rows.length) return;
+    const allItems = rows.map(r=>r.item);
+    const moved = [...allItems];
+    const [removed] = moved.splice(fromIdx, 1);
+    moved.splice(toIdx, 0, removed);
+    const cat = CHECKLIST_CATS.find(c=>c.id===catId);
+    const defaultSet = new Set((cat?.items||[]).filter(it=>!(deletedItems[catId]||new Set()).has(it)).map(it=>(renamedItems[catId]||{})[it]||it));
+    const newCustom = moved.filter(it=>!defaultSet.has(it));
+    setCustomItems(p=>({...p,[catId]:newCustom}));
+  };
+
+  const [confirmDel, setConfirmDel] = useState(null);
 
   const deleteItem=(catId,item,isCustom)=>{
     setConfirmDel({catId,item,isCustom});
@@ -1892,6 +1940,10 @@ function TripListTab({trip, onUpdate, pal, listData={}, onUpdateListData}){
                     if(row.isCustom) setCustomItems(p=>({...p,[openCat]:(p[openCat]||[]).map(x=>x===row.item?newName.trim():x)}));
                     else setRenamedItems(p=>({...p,[openCat]:{...(p[openCat]||{}),[row.origName]:newName.trim()}}));
                   }}
+                  onMoveUp={()=>moveItem(openCat,idx,idx-1)}
+                  onMoveDown={()=>moveItem(openCat,idx,idx+1)}
+                  canUp={idx>0}
+                  canDown={idx<checklistRows.length-1}
                   pal={pal}
                 />
               </SwipeDelete>
@@ -3868,6 +3920,10 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
   const [delTarget2,setDelTarget2]=useState(null);
   const [editTarget2,setEditTarget2]=useState(null);
   const [showAdd2,setShowAdd2]=useState(false);
+  const [showMove, setShowMove] = useState(false);
+  const [moveTarget, setMoveTarget] = useState(null); // {idx, ev}
+  const [moveToDayIdx, setMoveToDayIdx] = useState(0);
+
   const schedule=trip.days[dayIdx]?.schedule||[];
   const sf=k=>v=>setForm(f=>({...f,[k]:v}));
   const updateSched=ns=>{const u=deepClone(trip);u.days[dayIdx].schedule=ns;onUpdate(u);};
@@ -3882,6 +3938,22 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
   };
   const delEvent=i=>{setDelTarget({idx:i,title:schedule[i]?.title||"此行程"});};
   const confirmDel=()=>{ if(delTarget!==null){ updateSched(schedule.filter((_,j)=>j!==delTarget.idx)); setDelTarget(null); } };
+
+  const openMove=(i)=>{
+    setMoveTarget({idx:i, ev:schedule[i]});
+    setMoveToDayIdx(dayIdx===0?1:0);
+    setShowMove(true);
+  };
+  const confirmMove=()=>{
+    if(!moveTarget) return;
+    const u=deepClone(trip);
+    // 從原日期移除
+    u.days[dayIdx].schedule=u.days[dayIdx].schedule.filter((_,j)=>j!==moveTarget.idx);
+    // 加到目標日期
+    u.days[moveToDayIdx].schedule=[...u.days[moveToDayIdx].schedule, moveTarget.ev];
+    onUpdate(u);
+    setShowMove(false); setMoveTarget(null);
+  };
   const NAV=[
     {k:"map",      label:"清單"},
     {k:"calendar", label:"行程"},
@@ -3983,11 +4055,17 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
                     </div>
                     {/* 展開後顯示操作按鈕 */}
                     {expanded&&(
-                      <div style={{display:"flex",gap:7,marginTop:10}} onClick={e=>e.stopPropagation()}>
+                      <div style={{display:"flex",gap:7,marginTop:10,flexWrap:"wrap"}} onClick={e=>e.stopPropagation()}>
                         <button onClick={()=>{setExpandedIdx(null);openEdit(i);}}
                           style={{display:"flex",alignItems:"center",gap:4,padding:"6px 12px",borderRadius:12,background:APP_BG,border:`1px solid ${BORDER}`,cursor:"pointer",fontSize:11,color:TEXT_M,fontFamily:"inherit"}}>
                           <Icon name="pencil-sm" size={12} color={TEXT_M} sw={1.8}/> 編輯
                         </button>
+                        {trip.days.length>1&&(
+                          <button onClick={()=>{setExpandedIdx(null);openMove(i);}}
+                            style={{display:"flex",alignItems:"center",gap:4,padding:"6px 12px",borderRadius:12,background:APP_BG,border:`1px solid ${BORDER}`,cursor:"pointer",fontSize:11,color:TEXT_M,fontFamily:"inherit"}}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={TEXT_M} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg> 移動
+                          </button>
+                        )}
                         <button onClick={()=>{setExpandedIdx(null);delEvent(i);}}
                           style={{display:"flex",alignItems:"center",gap:4,padding:"6px 12px",borderRadius:12,background:"#F4EDEC",border:"none",cursor:"pointer",fontSize:11,color:"#B04A38",fontFamily:"inherit"}}>
                           <Icon name="trash" size={12} color="#B04A38"/> 刪除
@@ -4139,6 +4217,34 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
         <Dialog show={!!delTarget} icon={<Icon name="trash" size={28}/>} title="刪除這個行程？"
           desc={`「${delTarget?.title}」刪除後將無法復原。`}
           onConfirm={confirmDel} onCancel={()=>setDelTarget(null)} confirmLabel="確認刪除" danger/>
+
+        {/* 移動行程 BottomSheet */}
+        <BottomSheet show={showMove} onClose={()=>setShowMove(false)} title="移動到其他日期">
+          <div style={{display:"flex",flexDirection:"column",gap:12,paddingBottom:8}}>
+            <div style={{fontSize:13,color:TEXT_M}}>
+              將「<strong>{moveTarget?.ev?.title}</strong>」移動到：
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:280,overflowY:"auto"}}>
+              {trip.days.map((d,i)=>{
+                const isCurrent = i===dayIdx;
+                return(
+                  <button key={i} onClick={()=>!isCurrent&&setMoveToDayIdx(i)}
+                    style={{padding:"12px 16px",borderRadius:14,border:`1.5px solid ${moveToDayIdx===i&&!isCurrent?pal.bg:BORDER}`,background:moveToDayIdx===i&&!isCurrent?`${pal.bg}12`:isCurrent?APP_BG:CARD_BG,cursor:isCurrent?"default":"pointer",fontFamily:"inherit",textAlign:"left",opacity:isCurrent?.4:1}}>
+                    <div style={{fontSize:13,fontWeight:600,color:moveToDayIdx===i&&!isCurrent?pal.bg:TEXT_D}}>
+                      {["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][parseInt(d.month)-1]} {parseInt(d.dateNumber)} · {d.weekDay}
+                      {isCurrent&&<span style={{fontSize:10,color:TEXT_L,marginLeft:6}}>（目前）</span>}
+                    </div>
+                    <div style={{fontSize:11,color:TEXT_L,marginTop:2}}>{d.schedule.length} 個行程</div>
+                  </button>
+                );
+              })}
+            </div>
+            <button onClick={confirmMove} disabled={moveToDayIdx===dayIdx}
+              style={{width:"100%",padding:"13px 0",borderRadius:16,background:moveToDayIdx===dayIdx?"#C0B4A8":pal.bg,color:pal.fg,fontSize:14,fontWeight:600,border:"none",cursor:"pointer",fontFamily:"inherit"}}>
+              確認移動
+            </button>
+          </div>
+        </BottomSheet>
       </div>
     );
   }
