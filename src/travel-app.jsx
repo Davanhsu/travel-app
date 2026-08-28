@@ -1493,7 +1493,7 @@ function WeatherCard({trip, pal}){
 }
 
 // ─── 打包清單項目（勾選 + 點文字編輯）───
-function ChecklistItem({item, done, onToggle, onRename, pal, onMove}){
+function ChecklistItem({item, done, onToggle, onRename, pal}){
   const [editing, setEditing] = useState(false);
   const [val, setVal]         = useState(item);
   const inputRef              = useRef(null);
@@ -1533,11 +1533,6 @@ function ChecklistItem({item, done, onToggle, onRename, pal, onMove}){
             {item}
           </span>
       }
-      {/* 移動按鈕 */}
-      {!editing&&<button onClick={e=>{e.stopPropagation();onMove();}}
-        style={{width:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",background:"none",border:"none",cursor:"pointer",flexShrink:0,opacity:.4}}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={TEXT_M} strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12l7-7 7 7"/><path d="M5 12l7 7 7-7" transform="translate(0,2)"/></svg>
-      </button>}
     </div>
   );
 }
@@ -1918,22 +1913,53 @@ function TripListTab({trip, onUpdate, pal, listData={}, onUpdateListData}){
             ))}
           </div>
           <div style={{padding:"6px 14px 10px"}}>
-            {checklistRows.map((row,idx)=>(
-              <SwipeDelete key={row.key} onDelete={()=>deleteItem(openCat, row.origName, row.isCustom)}>
-                <ChecklistItem
-                  item={row.item}
-                  done={row.done}
-                  onToggle={e=>{e.stopPropagation();setChecked(p=>({...p,[openCat]:{...(p[openCat]||{}),[row.origName]:!p[openCat]?.[row.origName]}}));}}
-                  onRename={newName=>{
-                    if(!newName.trim()||newName===row.item) return;
-                    if(row.isCustom) setCustomItems(p=>({...p,[openCat]:(p[openCat]||[]).map(x=>x===row.item?newName.trim():x)}));
-                    else setRenamedItems(p=>({...p,[openCat]:{...(p[openCat]||{}),[row.origName]:newName.trim()}}));
-                  }}
-                  onMove={()=>openMoveItem(idx)}
-                  pal={pal}
-                />
-              </SwipeDelete>
-            ))}
+            {/* 打包清單：拖曳排序，勾選自動移到下方 */}
+            {(()=>{
+              const unchecked = checklistRows.filter(r=>!r.done);
+              const checked   = checklistRows.filter(r=>r.done);
+              const reorder = newUnchecked => {
+                // 重建 customItems 順序
+                const cat = CHECKLIST_CATS.find(c=>c.id===openCat);
+                const defaultSet = new Set(cat?.items||[]);
+                const newCustom = newUnchecked.filter(r=>r.isCustom).map(r=>r.item);
+                setCustomItems(p=>({...p,[openCat]:newCustom}));
+              };
+              return(
+                <>
+                  <SortableList items={unchecked} onReorder={reorder} renderItem={(row,i,isActive,gripProps)=>(
+                    <div style={{display:"flex",alignItems:"center",background:isActive?"#F0EDE8":"transparent",borderRadius:8,transition:"background .15s"}}>
+                      <div {...gripProps} style={{...(gripProps?.style),padding:"0 6px",cursor:"grab",opacity:.3,flexShrink:0}}>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={TEXT_L} strokeWidth="2"><circle cx="9" cy="5" r="1.2" fill={TEXT_L}/><circle cx="9" cy="12" r="1.2" fill={TEXT_L}/><circle cx="9" cy="19" r="1.2" fill={TEXT_L}/><circle cx="15" cy="5" r="1.2" fill={TEXT_L}/><circle cx="15" cy="12" r="1.2" fill={TEXT_L}/><circle cx="15" cy="19" r="1.2" fill={TEXT_L}/></svg>
+                      </div>
+                      <SwipeDelete onDelete={()=>deleteItem(openCat, row.origName, row.isCustom)} style={{flex:1}}>
+                        <ChecklistItem item={row.item} done={false}
+                          onToggle={e=>{e.stopPropagation();setChecked(p=>({...p,[openCat]:{...(p[openCat]||{}),[row.origName]:true}}));}}
+                          onRename={newName=>{
+                            if(!newName.trim()||newName===row.item) return;
+                            if(row.isCustom) setCustomItems(p=>({...p,[openCat]:(p[openCat]||[]).map(x=>x===row.item?newName.trim():x)}));
+                            else setRenamedItems(p=>({...p,[openCat]:{...(p[openCat]||{}),[row.origName]:newName.trim()}}));
+                          }}
+                          onMove={()=>{}}
+                          pal={pal}/>
+                      </SwipeDelete>
+                    </div>
+                  )}/>
+                  {checked.length>0&&(
+                    <div style={{marginTop:8,paddingTop:8,borderTop:`1px dashed ${BORDER}`}}>
+                      {checked.map((row,i)=>(
+                        <SwipeDelete key={row.key} onDelete={()=>deleteItem(openCat, row.origName, row.isCustom)}>
+                          <ChecklistItem item={row.item} done={true}
+                            onToggle={e=>{e.stopPropagation();setChecked(p=>({...p,[openCat]:{...(p[openCat]||{}),[row.origName]:false}}));}}
+                            onRename={()=>{}}
+                            onMove={()=>{}}
+                            pal={pal}/>
+                        </SwipeDelete>
+                      ))}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
             <div style={{display:"flex",gap:6,marginTop:8}}>
               <input value={newItemText[openCat]||""} onChange={e=>setNewItemText(p=>({...p,[openCat]:e.target.value}))}
                 onKeyDown={e=>e.key==="Enter"&&addItem(openCat)} placeholder="新增項目…"
@@ -3949,16 +3975,15 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
   const confirmDel=()=>{ if(delTarget!==null){ updateSched(schedule.filter((_,j)=>j!==delTarget.idx)); setDelTarget(null); } };
 
   const openMove=(i)=>{
-    setMoveTarget({idx:i, ev:schedule[i]});
+    setMoveTarget({idx:i, ev:schedule[i], dayIdx});
     setMoveToDayIdx(dayIdx===0?1:0);
     setShowMove(true);
   };
   const confirmMove=()=>{
     if(!moveTarget) return;
+    const fromDay = moveTarget.dayIdx;
     const u=deepClone(trip);
-    // 從原日期移除
-    u.days[dayIdx].schedule=u.days[dayIdx].schedule.filter((_,j)=>j!==moveTarget.idx);
-    // 加到目標日期
+    u.days[fromDay].schedule=u.days[fromDay].schedule.filter((_,j)=>j!==moveTarget.idx);
     u.days[moveToDayIdx].schedule=[...u.days[moveToDayIdx].schedule, moveTarget.ev];
     onUpdate(u);
     setShowMove(false); setMoveTarget(null);
@@ -4227,33 +4252,7 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
           desc={`「${delTarget?.title}」刪除後將無法復原。`}
           onConfirm={confirmDel} onCancel={()=>setDelTarget(null)} confirmLabel="確認刪除" danger/>
 
-        {/* 移動行程 BottomSheet */}
-        <BottomSheet show={showMove} onClose={()=>setShowMove(false)} title="移動到其他日期">
-          <div style={{display:"flex",flexDirection:"column",gap:12,paddingBottom:8}}>
-            <div style={{fontSize:13,color:TEXT_M}}>
-              將「<strong>{moveTarget?.ev?.title}</strong>」移動到：
-            </div>
-            <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:280,overflowY:"auto"}}>
-              {trip.days.map((d,i)=>{
-                const isCurrent = i===dayIdx;
-                return(
-                  <button key={i} onClick={()=>!isCurrent&&setMoveToDayIdx(i)}
-                    style={{padding:"12px 16px",borderRadius:14,border:`1.5px solid ${moveToDayIdx===i&&!isCurrent?pal.bg:BORDER}`,background:moveToDayIdx===i&&!isCurrent?`${pal.bg}12`:isCurrent?APP_BG:CARD_BG,cursor:isCurrent?"default":"pointer",fontFamily:"inherit",textAlign:"left",opacity:isCurrent?.4:1}}>
-                    <div style={{fontSize:13,fontWeight:600,color:moveToDayIdx===i&&!isCurrent?pal.bg:TEXT_D}}>
-                      {["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][parseInt(d.month)-1]} {parseInt(d.dateNumber)} · {d.weekDay}
-                      {isCurrent&&<span style={{fontSize:10,color:TEXT_L,marginLeft:6}}>（目前）</span>}
-                    </div>
-                    <div style={{fontSize:11,color:TEXT_L,marginTop:2}}>{d.schedule.length} 個行程</div>
-                  </button>
-                );
-              })}
-            </div>
-            <button onClick={confirmMove} disabled={moveToDayIdx===dayIdx}
-              style={{width:"100%",padding:"13px 0",borderRadius:16,background:moveToDayIdx===dayIdx?"#C0B4A8":pal.bg,color:pal.fg,fontSize:14,fontWeight:600,border:"none",cursor:"pointer",fontFamily:"inherit"}}>
-              確認移動
-            </button>
-          </div>
-        </BottomSheet>
+
       </div>
     );
   }
@@ -4482,6 +4481,34 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
         }}
         onCancel={()=>setShowLeaveConfirm(false)}
         confirmLabel="確認離開" danger/>
+
+      {/* 移動行程到其他日期 */}
+      <BottomSheet show={showMove} onClose={()=>setShowMove(false)} title="移動到其他日期">
+        <div style={{display:"flex",flexDirection:"column",gap:12,paddingBottom:8}}>
+          <div style={{fontSize:13,color:TEXT_M}}>
+            將「<strong>{moveTarget?.ev?.title}</strong>」移動到：
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:300,overflowY:"auto"}}>
+            {trip.days.map((d,i)=>{
+              const isCurrent = i===moveTarget?.dayIdx;
+              return(
+                <button key={i} onClick={()=>!isCurrent&&setMoveToDayIdx(i)}
+                  style={{padding:"12px 16px",borderRadius:14,border:`1.5px solid ${moveToDayIdx===i&&!isCurrent?pal.bg:BORDER}`,background:moveToDayIdx===i&&!isCurrent?`${pal.bg}12`:isCurrent?"#F0EFED":CARD_BG,cursor:isCurrent?"default":"pointer",fontFamily:"inherit",textAlign:"left",opacity:isCurrent?.4:1}}>
+                  <div style={{fontSize:13,fontWeight:600,color:moveToDayIdx===i&&!isCurrent?pal.bg:TEXT_D}}>
+                    {["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][parseInt(d.month)-1]} {parseInt(d.dateNumber)} · {d.weekDay}
+                    {isCurrent&&<span style={{fontSize:10,color:TEXT_L,marginLeft:6}}>（目前）</span>}
+                  </div>
+                  <div style={{fontSize:11,color:TEXT_L,marginTop:2}}>{d.schedule.length} 個行程</div>
+                </button>
+              );
+            })}
+          </div>
+          <button onClick={confirmMove}
+            style={{width:"100%",padding:"13px 0",borderRadius:16,background:pal.bg,color:pal.fg,fontSize:14,fontWeight:600,border:"none",cursor:"pointer",fontFamily:"inherit"}}>
+            確認移動
+          </button>
+        </div>
+      </BottomSheet>
     </div>
   );
 }
