@@ -1492,17 +1492,14 @@ function WeatherCard({trip, pal}){
   );
 }
 
-// ─── 打包清單項目（勾選 + 點文字編輯 + 久按排序）───
-function ChecklistItem({item, done, onToggle, onRename, pal, onMoveUp, onMoveDown, canUp, canDown}){
+// ─── 打包清單項目（勾選 + 點文字編輯）───
+function ChecklistItem({item, done, onToggle, onRename, pal, onMove}){
   const [editing, setEditing] = useState(false);
   const [val, setVal]         = useState(item);
-  const [reordering, setReordering] = useState(false);
   const inputRef              = useRef(null);
   const committedRef          = useRef(false);
-  const longPressTimer        = useRef(null);
 
   useEffect(()=>{ if(!editing) setVal(item); },[item, editing]);
-
   useEffect(()=>{
     if(editing){
       committedRef.current = false;
@@ -1518,59 +1515,29 @@ function ChecklistItem({item, done, onToggle, onRename, pal, onMoveUp, onMoveDow
     else setVal(item);
   };
 
-  const startLongPress = ()=>{
-    longPressTimer.current = setTimeout(()=>{
-      setReordering(true);
-    }, 500);
-  };
-  const cancelLongPress = ()=>{ clearTimeout(longPressTimer.current); };
-
   return(
     <div style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",borderBottom:`1px solid ${BORDER}`,minHeight:34}}>
-      {reordering ? (
-        // 排序模式：顯示上下按鈕
-        <>
-          <div style={{display:"flex",flexDirection:"column",gap:1,flexShrink:0}}>
-            <button onClick={()=>{ if(canUp) onMoveUp(); }}
-              style={{width:24,height:18,border:"none",background:"none",cursor:canUp?"pointer":"default",opacity:canUp?1:.25,padding:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={pal.bg} strokeWidth="2.5" strokeLinecap="round"><path d="M5 15l7-7 7 7"/></svg>
-            </button>
-            <button onClick={()=>{ if(canDown) onMoveDown(); }}
-              style={{width:24,height:18,border:"none",background:"none",cursor:canDown?"pointer":"default",opacity:canDown?1:.25,padding:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={pal.bg} strokeWidth="2.5" strokeLinecap="round"><path d="M19 9l-7 7-7-7"/></svg>
-            </button>
-          </div>
-          <span style={{flex:1,fontSize:12,color:TEXT_D}}>{item}</span>
-          <button onClick={()=>setReordering(false)}
-            style={{fontSize:10,color:TEXT_L,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",padding:"2px 6px"}}>完成</button>
-        </>
-      ) : (
-        // 正常模式
-        <>
-          <div onClick={e=>{e.stopPropagation();onToggle(e);}}
-            style={{width:20,height:20,borderRadius:6,border:`1.5px solid ${done?pal.bg:BORDER}`,background:done?pal.bg:"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,WebkitTapHighlightColor:"transparent"}}>
-            {done&&<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="#fff" strokeWidth="2"><path d="M2 6l3 3 5-5"/></svg>}
-          </div>
-          {editing
-            ? <input ref={inputRef} value={val}
-                onChange={e=>setVal(e.target.value)}
-                onBlur={commit}
-                onKeyDown={e=>{ if(e.key==="Enter"){ e.preventDefault(); commit(); } }}
-                style={{flex:1,fontSize:16,lineHeight:"20px",height:20,color:TEXT_D,background:"transparent",border:"none",borderBottom:`1px solid ${pal.bg}`,outline:"none",fontFamily:"inherit",padding:0}}/>
-            : <span
-                onClick={e=>{ if(done) return; e.stopPropagation(); setVal(item); setEditing(true); }}
-                onMouseDown={startLongPress}
-                onMouseUp={cancelLongPress}
-                onMouseLeave={cancelLongPress}
-                onTouchStart={startLongPress}
-                onTouchEnd={cancelLongPress}
-                onTouchMove={cancelLongPress}
-                style={{flex:1,fontSize:12,lineHeight:"20px",color:done?TEXT_L:TEXT_D,textDecoration:done?"line-through":"none",cursor:done?"default":"text",userSelect:"none",WebkitTapHighlightColor:"transparent"}}>
-                {item}
-              </span>
-          }
-        </>
-      )}
+      <div onClick={e=>{e.stopPropagation();onToggle(e);}}
+        style={{width:20,height:20,borderRadius:6,border:`1.5px solid ${done?pal.bg:BORDER}`,background:done?pal.bg:"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",flexShrink:0,WebkitTapHighlightColor:"transparent"}}>
+        {done&&<svg width="10" height="10" viewBox="0 0 12 12" fill="none" stroke="#fff" strokeWidth="2"><path d="M2 6l3 3 5-5"/></svg>}
+      </div>
+      {editing
+        ? <input ref={inputRef} value={val}
+            onChange={e=>setVal(e.target.value)}
+            onBlur={commit}
+            onKeyDown={e=>{ if(e.key==="Enter"){ e.preventDefault(); commit(); } }}
+            style={{flex:1,fontSize:16,lineHeight:"20px",height:20,color:TEXT_D,background:"transparent",border:"none",borderBottom:`1px solid ${pal.bg}`,outline:"none",fontFamily:"inherit",padding:0}}/>
+        : <span
+            onClick={e=>{ if(done) return; e.stopPropagation(); setVal(item); setEditing(true); }}
+            style={{flex:1,fontSize:12,lineHeight:"20px",color:done?TEXT_L:TEXT_D,textDecoration:done?"line-through":"none",cursor:done?"default":"text",userSelect:"none",WebkitTapHighlightColor:"transparent"}}>
+            {item}
+          </span>
+      }
+      {/* 移動按鈕 */}
+      {!editing&&<button onClick={e=>{e.stopPropagation();onMove();}}
+        style={{width:24,height:24,display:"flex",alignItems:"center",justifyContent:"center",background:"none",border:"none",cursor:"pointer",flexShrink:0,opacity:.4}}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={TEXT_M} strokeWidth="2" strokeLinecap="round"><path d="M12 5v14M5 12l7-7 7 7"/><path d="M5 12l7 7 7-7" transform="translate(0,2)"/></svg>
+      </button>}
     </div>
   );
 }
@@ -1706,17 +1673,39 @@ function TripListTab({trip, onUpdate, pal, listData={}, onUpdateListData}){
     return {id:c.id, label:c.label, total:ai.length, done:ai.filter(it=>checked[c.id]?.[it]).length};
   });
 
-  const moveItem = (catId, fromIdx, toIdx) => {
-    const rows = checklistRows;
-    if(toIdx < 0 || toIdx >= rows.length) return;
-    const allItems = rows.map(r=>r.item);
-    const moved = [...allItems];
-    const [removed] = moved.splice(fromIdx, 1);
-    moved.splice(toIdx, 0, removed);
-    const cat = CHECKLIST_CATS.find(c=>c.id===catId);
-    const defaultSet = new Set((cat?.items||[]).filter(it=>!(deletedItems[catId]||new Set()).has(it)).map(it=>(renamedItems[catId]||{})[it]||it));
-    const newCustom = moved.filter(it=>!defaultSet.has(it));
-    setCustomItems(p=>({...p,[catId]:newCustom}));
+  const [showMoveItem, setShowMoveItem] = useState(false);
+  const [moveItemTarget, setMoveItemTarget] = useState(null);
+  const [moveItemTo, setMoveItemTo] = useState(0);
+
+  const openMoveItem = (idx) => {
+    setMoveItemTarget({idx, item: checklistRows[idx].item});
+    setMoveItemTo(idx===0 ? 1 : idx-1);
+    setShowMoveItem(true);
+  };
+
+  const confirmMoveItem = () => {
+    if(!moveItemTarget) return;
+    const from = moveItemTarget.idx;
+    const to   = moveItemTo;
+    if(from===to){ setShowMoveItem(false); return; }
+    const all = [...checklistRows];
+    const [removed] = all.splice(from, 1);
+    all.splice(to, 0, removed);
+    // 重建自訂項目順序（含原本是預設的，一律存進 customItems）
+    const cat = CHECKLIST_CATS.find(c=>c.id===openCat);
+    const defaultSet = new Set(cat?.items||[]);
+    // 把所有項目（含預設）都按新順序存成 customItems
+    const allInNewOrder = all.map(r=>r.item);
+    setCustomItems(p=>({...p,[openCat]:allInNewOrder}));
+    // 同時把原本的預設項目標記為「已自訂排序」（刪掉預設，讓 customItems 主導）
+    setDeletedItems(p=>{
+      const cur = new Set(p[openCat]||[]);
+      (cat?.items||[]).forEach(it=>cur.add(it));
+      return {...p,[openCat]:cur};
+    });
+    // 還原勾選狀態（用 origName 對應）
+    setShowMoveItem(false);
+    setMoveItemTarget(null);
   };
 
   const [confirmDel, setConfirmDel] = useState(null);
@@ -1940,10 +1929,7 @@ function TripListTab({trip, onUpdate, pal, listData={}, onUpdateListData}){
                     if(row.isCustom) setCustomItems(p=>({...p,[openCat]:(p[openCat]||[]).map(x=>x===row.item?newName.trim():x)}));
                     else setRenamedItems(p=>({...p,[openCat]:{...(p[openCat]||{}),[row.origName]:newName.trim()}}));
                   }}
-                  onMoveUp={()=>moveItem(openCat,idx,idx-1)}
-                  onMoveDown={()=>moveItem(openCat,idx,idx+1)}
-                  canUp={idx>0}
-                  canDown={idx<checklistRows.length-1}
+                  onMove={()=>openMoveItem(idx)}
                   pal={pal}
                 />
               </SwipeDelete>
@@ -1963,6 +1949,29 @@ function TripListTab({trip, onUpdate, pal, listData={}, onUpdateListData}){
         title={`刪除「${confirmDel?.item}」？`}
         desc="刪除後將無法復原。"
         onConfirm={confirmDelete} onCancel={()=>setConfirmDel(null)} confirmLabel="確認刪除" danger/>
+
+      {/* 移動清單項目 */}
+      <BottomSheet show={showMoveItem} onClose={()=>setShowMoveItem(false)} title="移動到哪個位置？">
+        <div style={{display:"flex",flexDirection:"column",gap:10,paddingBottom:8}}>
+          <div style={{fontSize:13,color:TEXT_M}}>將「<strong>{moveItemTarget?.item}</strong>」移動到：</div>
+          <div style={{display:"flex",flexDirection:"column",gap:5,maxHeight:300,overflowY:"auto"}}>
+            {checklistRows.map((row,i)=>{
+              const isCurrent = i===moveItemTarget?.idx;
+              return(
+                <button key={i} onClick={()=>!isCurrent&&setMoveItemTo(i)}
+                  style={{padding:"10px 14px",borderRadius:12,border:`1.5px solid ${moveItemTo===i&&!isCurrent?pal.bg:BORDER}`,background:moveItemTo===i&&!isCurrent?`${pal.bg}15`:isCurrent?"#F0EFED":CARD_BG,cursor:isCurrent?"default":"pointer",fontFamily:"inherit",textAlign:"left",opacity:isCurrent?.35:1,fontSize:13,color:moveItemTo===i&&!isCurrent?pal.bg:TEXT_D}}>
+                  {row.item}
+                  {isCurrent&&<span style={{fontSize:10,color:TEXT_L,marginLeft:6}}>（目前位置）</span>}
+                </button>
+              );
+            })}
+          </div>
+          <button onClick={confirmMoveItem}
+            style={{width:"100%",padding:"13px 0",borderRadius:16,background:pal.bg,color:pal.fg,fontSize:14,fontWeight:600,border:"none",cursor:"pointer",fontFamily:"inherit"}}>
+            確認移動
+          </button>
+        </div>
+      </BottomSheet>
 
       {/* 緊急資訊 */}
       <div style={card}>
@@ -4061,7 +4070,7 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
                           <Icon name="pencil-sm" size={12} color={TEXT_M} sw={1.8}/> 編輯
                         </button>
                         {trip.days.length>1&&(
-                          <button onClick={()=>{setExpandedIdx(null);openMove(i);}}
+                          <button onClick={()=>openMove(i)}
                             style={{display:"flex",alignItems:"center",gap:4,padding:"6px 12px",borderRadius:12,background:APP_BG,border:`1px solid ${BORDER}`,cursor:"pointer",fontSize:11,color:TEXT_M,fontFamily:"inherit"}}>
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={TEXT_M} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg> 移動
                           </button>
