@@ -1928,16 +1928,18 @@ function TripListTab({trip, onUpdate, pal, listData={}, onUpdateListData}){
                 <>
                   <SortableList items={unchecked} onReorder={reorder} renderItem={(row,i,isActive,gripProps)=>(
                     <div style={{display:"flex",alignItems:"center",background:isActive?"#F0EDE8":"transparent",borderRadius:8,transition:"background .15s"}}>
-                      <SwipeDelete onDelete={()=>deleteItem(openCat, row.origName, row.isCustom)} style={{flex:1}}>
-                        <ChecklistItem item={row.item} done={false}
-                          onToggle={e=>{e.stopPropagation();setChecked(p=>({...p,[openCat]:{...(p[openCat]||{}),[row.origName]:true}}));}}
-                          onRename={newName=>{
-                            if(!newName.trim()||newName===row.item) return;
-                            if(row.isCustom) setCustomItems(p=>({...p,[openCat]:(p[openCat]||[]).map(x=>x===row.item?newName.trim():x)}));
-                            else setRenamedItems(p=>({...p,[openCat]:{...(p[openCat]||{}),[row.origName]:newName.trim()}}));
-                          }}
-                          pal={pal}/>
-                      </SwipeDelete>
+                      <div style={{flex:1,minWidth:0}}>
+                        <SwipeDelete onDelete={()=>deleteItem(openCat, row.origName, row.isCustom)}>
+                          <ChecklistItem item={row.item} done={false}
+                            onToggle={e=>{e.stopPropagation();setChecked(p=>({...p,[openCat]:{...(p[openCat]||{}),[row.origName]:true}}));}}
+                            onRename={newName=>{
+                              if(!newName.trim()||newName===row.item) return;
+                              if(row.isCustom) setCustomItems(p=>({...p,[openCat]:(p[openCat]||[]).map(x=>x===row.item?newName.trim():x)}));
+                              else setRenamedItems(p=>({...p,[openCat]:{...(p[openCat]||{}),[row.origName]:newName.trim()}}));
+                            }}
+                            pal={pal}/>
+                        </SwipeDelete>
+                      </div>
                       <div {...gripProps} style={{...(gripProps?.style),padding:"0 6px",cursor:"grab",opacity:.25,flexShrink:0,touchAction:"none"}}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={TEXT_L} strokeWidth="2"><circle cx="9" cy="5" r="1.2" fill={TEXT_L}/><circle cx="9" cy="12" r="1.2" fill={TEXT_L}/><circle cx="9" cy="19" r="1.2" fill={TEXT_L}/><circle cx="15" cy="5" r="1.2" fill={TEXT_L}/><circle cx="15" cy="12" r="1.2" fill={TEXT_L}/><circle cx="15" cy="19" r="1.2" fill={TEXT_L}/></svg>
                       </div>
