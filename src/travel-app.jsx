@@ -830,6 +830,7 @@ const FLIGHT_TYPES = [
 
 function FlightPanel({ trip, onUpdate, pal, show, onClose }){
   const flights   = trip.flights || [];
+  const companions = trip.companions || [];
   const [showForm,setShowForm]= useState(false);
   const [editItem,setEditItem]= useState(null);
   const [delTarget,setDelTarget]=useState(null);
@@ -846,6 +847,8 @@ function FlightPanel({ trip, onUpdate, pal, show, onClose }){
   const [fTerminal,setFTerminal]= useState("");
   const [fSeat,    setFSeat]    = useState("");
   const [fNote,    setFNote]    = useState("");
+  const [fTravelers,setFTravelers]=useState([]);   // 同行旅人（companion id）
+  const [fPairWith, setFPairWith]=useState("");    // 回程配對的去程 id
 
   const updateTrip = patch => onUpdate({...trip,...patch});
 
@@ -854,6 +857,7 @@ function FlightPanel({ trip, onUpdate, pal, show, onClose }){
     setFType("depart"); setFCode(""); setFFrom(""); setFTo("");
     setFDepDate(trip.startDate||""); setFDepTime(""); setFArrDate(""); setFArrTime("");
     setFTerminal(""); setFSeat(""); setFNote("");
+    setFTravelers(companions.map(c=>c.id)); setFPairWith("");
     setShowForm(true);
   };
   const openEdit = f => {
@@ -861,15 +865,17 @@ function FlightPanel({ trip, onUpdate, pal, show, onClose }){
     setFType(f.type); setFCode(f.code); setFFrom(f.from); setFTo(f.to);
     setFDepDate(f.depDate); setFDepTime(f.depTime); setFArrDate(f.arrDate); setFArrTime(f.arrTime);
     setFTerminal(f.terminal||""); setFSeat(f.seat||""); setFNote(f.note||"");
+    setFTravelers(f.travelers&&f.travelers.length?f.travelers:companions.map(c=>c.id));
+    setFPairWith(f.pairWith||"");
     setShowForm(true);
   };
   const saveFlight = () => {
     if(!fCode.trim()||!fFrom.trim()||!fTo.trim()) return;
-    const fl = { id:editItem?.id||genId(), type:fType, code:fCode.toUpperCase().trim(), from:fFrom.toUpperCase().trim(), to:fTo.toUpperCase().trim(), depDate:fDepDate, depTime:fDepTime, arrDate:fArrDate, arrTime:fArrTime, terminal:fTerminal.trim(), seat:fSeat.trim(), note:fNote.trim() };
+    const fl = { id:editItem?.id||genId(), type:fType, code:fCode.toUpperCase().trim(), from:fFrom.toUpperCase().trim(), to:fTo.toUpperCase().trim(), depDate:fDepDate, depTime:fDepTime, arrDate:fArrDate, arrTime:fArrTime, terminal:fTerminal.trim(), seat:fSeat.trim(), note:fNote.trim(), travelers:fTravelers, pairWith: fType==="return"?(fPairWith||null):null };
     updateTrip({ flights: editItem ? flights.map(f=>f.id===editItem.id?fl:f) : [...flights,fl] });
     setShowForm(false);
   };
-  const delFlight = id => { updateTrip({ flights: flights.filter(f=>f.id!==id) }); setDelTarget(null); };
+  const delFlight = id => { updateTrip({ flights: flights.filter(f=>f.id!==id).map(f=>f.pairWith===id?{...f,pairWith:null}:f) }); setDelTarget(null); };
 
   const openTrack = f => {
     window.open(`https://www.flightaware.com/live/flight/${encodeURIComponent(f.code)}/${f.from||""}/${f.to||""}`,"_blank");
@@ -878,6 +884,22 @@ function FlightPanel({ trip, onUpdate, pal, show, onClose }){
   // 排序：去程 → 轉機 → 回程
   const ORDER = { depart:0, transit:1, return:2 };
   const sorted = [...flights].sort((a,b)=>(ORDER[a.type]??9)-(ORDER[b.type]??9));
+
+  // 將配對的去程＋回程合併成一張卡片
+  const usedIds = new Set();
+  const cardGroups = [];
+  sorted.forEach(f=>{
+    if(usedIds.has(f.id)) return;
+    if(f.type==="depart"){
+      const ret = flights.find(x=>x.type==="return"&&x.pairWith===f.id);
+      if(ret){ cardGroups.push({legs:[f,ret]}); usedIds.add(f.id); usedIds.add(ret.id); return; }
+    }
+    cardGroups.push({legs:[f]}); usedIds.add(f.id);
+  });
+
+  // 可供回程選擇配對的去程（排除已被其他回程配對者，保留目前這筆回程自己原本配對的去程）
+  const availableDeparts = flights.filter(fl=>fl.type==="depart"
+    && !flights.some(x=>x.type==="return"&&x.pairWith===fl.id&&x.id!==editItem?.id));
 
   return (
     <>
@@ -889,53 +911,70 @@ function FlightPanel({ trip, onUpdate, pal, show, onClose }){
             <Icon name="plus" size={15} color="#fff" sw={2}/> 新增航班
           </button>
           {flights.length===0&&<div style={{textAlign:"center",padding:"32px 0",color:TEXT_L,fontSize:13,fontStyle:"italic"}}>尚無航班，點上方按鈕新增</div>}
-          {sorted.map((f,i)=>{
-            const ti=FLIGHT_TYPES.find(t=>t.id===f.type)||FLIGHT_TYPES[0];
+          {cardGroups.map((g,gi)=>{
+            const isPair = g.legs.length>1;
             return(
-              <div key={f.id} style={{borderBottom:i<sorted.length-1?`1px solid ${BORDER}`:"none",paddingBottom:14,marginBottom:i<sorted.length-1?14:0}}>
-                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
-                  <div style={{display:"flex",alignItems:"center",gap:5,background:APP_BG,borderRadius:20,padding:"4px 10px",border:`1px solid ${BORDER}`}}>
-                    <Icon name={ti.icon} size={13} color={pal.bg} sw={2}/>
-                    <span style={{fontSize:11,color:pal.bg,fontWeight:700}}>{ti.label}</span>
-                  </div>
-                  <span style={{fontFamily:"Georgia,serif",fontSize:15,fontWeight:700,color:TEXT_D}}>{f.code}</span>
-                </div>
-                <div style={{display:"flex",alignItems:"center",marginBottom:8}}>
-                  <div style={{textAlign:"center",flex:"0 0 64px"}}>
-                    <div style={{fontFamily:"Georgia,serif",fontSize:22,fontWeight:700,color:TEXT_D}}>{f.from}</div>
-                    <div style={{fontSize:11,color:TEXT_L}}>{f.depDate}</div>
-                    <div style={{fontSize:13,fontWeight:700,color:pal.bg}}>{f.depTime}</div>
-                  </div>
-                  <div style={{flex:1,display:"flex",alignItems:"center",padding:"0 8px"}}>
-                    <div style={{height:1,flex:1,background:BORDER}}/>
-                    <Icon name="plane" size={16} color={pal.bg} sw={1.5}/>
-                    <div style={{height:1,flex:1,background:BORDER}}/>
-                  </div>
-                  <div style={{textAlign:"center",flex:"0 0 64px"}}>
-                    <div style={{fontFamily:"Georgia,serif",fontSize:22,fontWeight:700,color:TEXT_D}}>{f.to}</div>
-                    <div style={{fontSize:11,color:TEXT_L}}>{f.arrDate}</div>
-                    <div style={{fontSize:13,fontWeight:700,color:pal.bg}}>{f.arrTime}</div>
-                  </div>
-                </div>
-                {(f.terminal||f.seat||f.note)&&(
-                  <div style={{display:"flex",gap:7,flexWrap:"wrap",marginBottom:8}}>
-                    {f.terminal&&<span style={{fontSize:11,background:APP_BG,color:TEXT_M,padding:"3px 9px",borderRadius:10,border:`1px solid ${BORDER}`}}>航廈 {f.terminal}</span>}
-                    {f.seat&&<span style={{fontSize:11,background:APP_BG,color:TEXT_M,padding:"3px 9px",borderRadius:10,border:`1px solid ${BORDER}`}}>{f.seat}</span>}
-                    {f.note&&<span style={{fontSize:11,color:TEXT_M,fontStyle:"italic"}}>{f.note}</span>}
+              <div key={g.legs[0].id} style={{borderBottom:gi<cardGroups.length-1?`1px solid ${BORDER}`:"none",paddingBottom:14,marginBottom:gi<cardGroups.length-1?14:0}}>
+                {isPair&&(
+                  <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:10}}>
+                    <Icon name="refresh" size={12} color={pal.bg} sw={2}/>
+                    <span style={{fontSize:11,fontWeight:700,color:pal.bg}}>來回行程</span>
                   </div>
                 )}
-                <div style={{display:"flex",gap:8}}>
-                  <button onClick={()=>window.open(`https://www.flightaware.com/live/flight/${encodeURIComponent(f.code)}/${f.from||""}/${f.to||""}`,"_blank")}
-                    style={{flex:1,padding:"8px 0",borderRadius:12,background:pal.bg,color:"#fff",fontSize:11,fontWeight:600,border:"none",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
-                    <Icon name="external-link" size={12} color="#fff" sw={2}/> 即時動態
-                  </button>
-                  <button onClick={()=>openEdit(f)} style={{width:34,height:34,borderRadius:10,background:APP_BG,border:`1px solid ${BORDER}`,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                    <Icon name="pencil-sm" size={13} color={TEXT_M} sw={1.8}/>
-                  </button>
-                  <button onClick={()=>setDelTarget(f.id)} style={{width:34,height:34,borderRadius:10,background:"#F4EDEC",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                    <Icon name="trash" size={13} color="#B04A38"/>
-                  </button>
-                </div>
+                {g.legs.map((f,li)=>{
+                  const ti=FLIGHT_TYPES.find(t=>t.id===f.type)||FLIGHT_TYPES[0];
+                  const travelerNames=(f.travelers&&f.travelers.length&&f.travelers.length<companions.length)
+                    ? f.travelers.map(id=>companions.find(c=>c.id===id)?.name).filter(Boolean) : null;
+                  return(
+                    <div key={f.id} style={{marginBottom:li<g.legs.length-1?14:0,paddingBottom:li<g.legs.length-1?14:0,borderBottom:li<g.legs.length-1?`1px dashed ${BORDER}`:"none"}}>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:10}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <div style={{display:"flex",alignItems:"center",gap:5,background:APP_BG,borderRadius:20,padding:"4px 10px",border:`1px solid ${BORDER}`}}>
+                            <Icon name={ti.icon} size={13} color={pal.bg} sw={2}/>
+                            <span style={{fontSize:11,color:pal.bg,fontWeight:700}}>{ti.label}</span>
+                          </div>
+                          <span style={{fontFamily:"Georgia,serif",fontSize:15,fontWeight:700,color:TEXT_D}}>{f.code}</span>
+                        </div>
+                        <div style={{display:"flex",gap:5,flexShrink:0}}>
+                          <button onClick={()=>openTrack(f)} style={{width:28,height:28,borderRadius:8,background:APP_BG,border:`1px solid ${BORDER}`,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                            <Icon name="external-link" size={12} color={TEXT_M} sw={2}/>
+                          </button>
+                          <button onClick={()=>openEdit(f)} style={{width:28,height:28,borderRadius:8,background:APP_BG,border:`1px solid ${BORDER}`,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                            <Icon name="pencil-sm" size={12} color={TEXT_M} sw={1.8}/>
+                          </button>
+                          <button onClick={()=>setDelTarget(f.id)} style={{width:28,height:28,borderRadius:8,background:"#F4EDEC",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                            <Icon name="trash" size={12} color="#B04A38"/>
+                          </button>
+                        </div>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",marginBottom:8}}>
+                        <div style={{textAlign:"center",flex:"0 0 64px"}}>
+                          <div style={{fontFamily:"Georgia,serif",fontSize:22,fontWeight:700,color:TEXT_D}}>{f.from}</div>
+                          <div style={{fontSize:11,color:TEXT_L}}>{f.depDate}</div>
+                          <div style={{fontSize:13,fontWeight:700,color:pal.bg}}>{f.depTime}</div>
+                        </div>
+                        <div style={{flex:1,display:"flex",alignItems:"center",padding:"0 8px"}}>
+                          <div style={{height:1,flex:1,background:BORDER}}/>
+                          <Icon name="plane" size={16} color={pal.bg} sw={1.5}/>
+                          <div style={{height:1,flex:1,background:BORDER}}/>
+                        </div>
+                        <div style={{textAlign:"center",flex:"0 0 64px"}}>
+                          <div style={{fontFamily:"Georgia,serif",fontSize:22,fontWeight:700,color:TEXT_D}}>{f.to}</div>
+                          <div style={{fontSize:11,color:TEXT_L}}>{f.arrDate}</div>
+                          <div style={{fontSize:13,fontWeight:700,color:pal.bg}}>{f.arrTime}</div>
+                        </div>
+                      </div>
+                      {(f.terminal||f.seat||f.note||travelerNames)&&(
+                        <div style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+                          {f.terminal&&<span style={{fontSize:11,background:APP_BG,color:TEXT_M,padding:"3px 9px",borderRadius:10,border:`1px solid ${BORDER}`}}>航廈 {f.terminal}</span>}
+                          {f.seat&&<span style={{fontSize:11,background:APP_BG,color:TEXT_M,padding:"3px 9px",borderRadius:10,border:`1px solid ${BORDER}`}}>{f.seat}</span>}
+                          {travelerNames&&<span style={{fontSize:11,background:APP_BG,color:pal.bg,padding:"3px 9px",borderRadius:10,border:`1px solid ${BORDER}`}}>👤 {travelerNames.join("、")}</span>}
+                          {f.note&&<span style={{fontSize:11,color:TEXT_M,fontStyle:"italic"}}>{f.note}</span>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             );
           })}
@@ -969,6 +1008,41 @@ function FlightPanel({ trip, onUpdate, pal, show, onClose }){
             <div style={{flex:1}}><label style={{fontSize:10,color:TEXT_L,display:"block",marginBottom:4,textTransform:"uppercase"}}>航廈</label><input value={fTerminal} onChange={e=>setFTerminal(e.target.value)} placeholder="T2" style={{width:"100%",padding:"9px 10px",border:`1.5px solid ${BORDER}`,borderRadius:12,background:APP_BG,fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none"}}/></div>
             <div style={{flex:2}}><label style={{fontSize:10,color:TEXT_L,display:"block",marginBottom:4,textTransform:"uppercase"}}>備註</label><input value={fSeat} onChange={e=>setFSeat(e.target.value)} placeholder="座位 32A、行李額度 23kg…" style={{width:"100%",padding:"9px 10px",border:`1.5px solid ${BORDER}`,borderRadius:12,background:APP_BG,fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none"}}/></div>
           </div>
+          {fType==="return"&&(
+            <div>
+              <label style={{fontSize:10,color:TEXT_L,display:"block",marginBottom:4,textTransform:"uppercase"}}>配對去程</label>
+              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                <button onClick={()=>setFPairWith("")}
+                  style={{padding:"5px 10px",borderRadius:20,background:!fPairWith?pal.bg:APP_BG,border:`1.5px solid ${!fPairWith?pal.bg:BORDER}`,color:!fPairWith?"#fff":TEXT_M,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
+                  不配對
+                </button>
+                {availableDeparts.map(d=>(
+                  <button key={d.id} onClick={()=>setFPairWith(d.id)}
+                    style={{padding:"5px 10px",borderRadius:20,background:fPairWith===d.id?pal.bg:APP_BG,border:`1.5px solid ${fPairWith===d.id?pal.bg:BORDER}`,color:fPairWith===d.id?"#fff":TEXT_M,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
+                    {d.code} {d.depDate}
+                  </button>
+                ))}
+              </div>
+              {availableDeparts.length===0&&<div style={{fontSize:11,color:TEXT_L,fontStyle:"italic",marginTop:4}}>尚無可配對的去程，請先新增去程航班</div>}
+            </div>
+          )}
+          {companions.length>0&&(
+            <div>
+              <label style={{fontSize:10,color:TEXT_L,display:"block",marginBottom:4,textTransform:"uppercase"}}>同行旅人</label>
+              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                {companions.map(c=>{
+                  const checked=fTravelers.includes(c.id);
+                  return(
+                    <button key={c.id} onClick={()=>setFTravelers(checked?fTravelers.filter(id=>id!==c.id):[...fTravelers,c.id])}
+                      style={{display:"flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:20,background:checked?pal.bg:APP_BG,border:`1.5px solid ${checked?pal.bg:BORDER}`,color:checked?"#fff":TEXT_M,fontSize:11,cursor:"pointer",fontFamily:"inherit",transition:"all .15s"}}>
+                      {checked&&<svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="#fff" strokeWidth="2"><path d="M2 6l3 3 5-5"/></svg>}
+                      {c.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           <div style={{display:"flex",gap:10,marginTop:2}}>
             <button onClick={()=>setShowForm(false)} style={{flex:1,padding:"12px 0",borderRadius:16,border:`1.5px solid ${BORDER}`,color:TEXT_M,fontSize:14,background:"none",cursor:"pointer",fontFamily:"inherit"}}>取消</button>
             <button onClick={saveFlight} style={{flex:1,padding:"12px 0",borderRadius:16,background:pal.bg,color:"#fff",fontSize:14,fontWeight:600,border:"none",cursor:"pointer",fontFamily:"inherit"}}>{editItem?"儲存修改":"加入航班"}</button>
@@ -1768,18 +1842,24 @@ function TripListTab({trip, onUpdate, pal, listData={}, onUpdateListData}){
   const [fTerminal,setFTerminal]=useState("");
   const [fSeat,  setFSeat]  = useState("");
   const [fNote2, setFNote2] = useState("");
+  const [fTravelers2,setFTravelers2]=useState([]);   // 同行旅人（companion id）
+  const [fPairWith2, setFPairWith2]=useState("");    // 回程配對的去程 id
 
-  const openAddFlight=()=>{setEditFlight(null);setFType("depart");setFCode("");setFFrom("");setFTo("");setFDepDate(trip.startDate||"");setFDepTime("08:00");setFArrDate("");setFArrTime("14:00");setFTerminal("");setFSeat("");setFNote2("");setShowFlightForm(true);};
-  const openEditFlight=f=>{setEditFlight(f);setFType(f.type);setFCode(f.code);setFFrom(f.from);setFTo(f.to);setFDepDate(f.depDate);setFDepTime(f.depTime);setFArrDate(f.arrDate);setFArrTime(f.arrTime);setFTerminal(f.terminal||"");setFSeat(f.seat||"");setFNote2(f.note||"");setShowFlightForm(true);};
+  const companions = trip.companions || [];
+
+  const openAddFlight=()=>{setEditFlight(null);setFType("depart");setFCode("");setFFrom("");setFTo("");setFDepDate(trip.startDate||"");setFDepTime("08:00");setFArrDate("");setFArrTime("14:00");setFTerminal("");setFSeat("");setFNote2("");setFTravelers2(companions.map(c=>c.id));setFPairWith2("");setShowFlightForm(true);};
+  const openEditFlight=f=>{setEditFlight(f);setFType(f.type);setFCode(f.code);setFFrom(f.from);setFTo(f.to);setFDepDate(f.depDate);setFDepTime(f.depTime);setFArrDate(f.arrDate);setFArrTime(f.arrTime);setFTerminal(f.terminal||"");setFSeat(f.seat||"");setFNote2(f.note||"");setFTravelers2(f.travelers&&f.travelers.length?f.travelers:companions.map(c=>c.id));setFPairWith2(f.pairWith||"");setShowFlightForm(true);};
   const saveFlight2=()=>{
     if(!fCode.trim()||!fFrom.trim()||!fTo.trim()) return;
-    const fl={id:editFlight?.id||genId(),type:fType,code:fCode.toUpperCase().trim(),from:fFrom.toUpperCase().trim(),to:fTo.toUpperCase().trim(),depDate:fDepDate,depTime:fDepTime,arrDate:fArrDate,arrTime:fArrTime,terminal:fTerminal.trim(),seat:fSeat.trim(),note:fNote2.trim()};
+    const fl={id:editFlight?.id||genId(),type:fType,code:fCode.toUpperCase().trim(),from:fFrom.toUpperCase().trim(),to:fTo.toUpperCase().trim(),depDate:fDepDate,depTime:fDepTime,arrDate:fArrDate,arrTime:fArrTime,terminal:fTerminal.trim(),seat:fSeat.trim(),note:fNote2.trim(),travelers:fTravelers2,pairWith:fType==="return"?(fPairWith2||null):null};
     const next=editFlight?(trip.flights||[]).map(f=>f.id===editFlight.id?fl:f):[...(trip.flights||[]),fl];
     onUpdate({...trip,flights:next});setShowFlightForm(false);
   };
-  const deleteFlight2=id=>onUpdate({...trip,flights:(trip.flights||[]).filter(f=>f.id!==id)});
+  const deleteFlight2=id=>onUpdate({...trip,flights:(trip.flights||[]).filter(f=>f.id!==id).map(f=>f.pairWith===id?{...f,pairWith:null}:f)});
 
   const flights=trip.flights||[];
+  const availableDeparts2 = flights.filter(fl=>fl.type==="depart"
+    && !flights.some(x=>x.type==="return"&&x.pairWith===fl.id&&x.id!==editFlight?.id));
   const card={background:CARD_BG,borderRadius:20,marginBottom:12,overflow:"hidden",boxShadow:"0 2px 8px rgba(0,0,0,.06)"};
   const hd=(label,icon,open,toggle,badge,addBtn)=>(
     <div style={{display:"flex",alignItems:"center",padding:"13px 16px"}}>
@@ -1825,45 +1905,75 @@ function TripListTab({trip, onUpdate, pal, listData={}, onUpdateListData}){
         )}
         {openFlight&&<div style={{borderTop:`1px solid ${BORDER}`}}>
           {!flights.length&&<div style={{padding:"14px 16px",fontSize:12,color:TEXT_L,fontStyle:"italic"}}>尚無航班，點上方「新增」加入。</div>}
-          {[...flights].sort((a,b)=>({depart:0,transit:1,return:2}[a.type]??9)-({depart:0,transit:1,return:2}[b.type]??9)).map((f,i)=>(
-            <SwipeDelete key={f.id} onDelete={()=>deleteFlight2(f.id)}>
-              <div style={{padding:"11px 16px",borderBottom:i<flights.length-1?`1px solid ${BORDER}`:"none"}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
-                  <div style={{display:"flex",alignItems:"center",gap:6}}>
-                    <span style={{fontSize:10,background:APP_BG,border:`1px solid ${BORDER}`,borderRadius:20,padding:"1px 7px",color:TEXT_M}}>{{depart:"去程",transit:"轉機",return:"回程"}[f.type]}</span>
-                    <span style={{fontFamily:"Georgia,serif",fontSize:14,fontWeight:700,color:TEXT_D}}>{f.code}</span>
-                  </div>
-                  <div style={{display:"flex",gap:5}}>
-                    <button onClick={e=>{e.stopPropagation();window.open(`https://www.flightaware.com/live/flight/${f.code}/${f.from||''}/${f.to||''}`,"_blank");}}
-                      style={{fontSize:9,color:pal.bg,background:APP_BG,border:`1px solid ${BORDER}`,borderRadius:8,padding:"2px 7px",cursor:"pointer",fontFamily:"inherit"}}>追蹤</button>
-                    <button onClick={e=>{e.stopPropagation();openEditFlight(f);}}
-                      style={{width:24,height:24,borderRadius:7,background:APP_BG,border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                      <Icon name="pencil-sm" size={11} color={TEXT_M} sw={1.8}/>
-                    </button>
-                  </div>
+          {(()=>{
+            const ORDER={depart:0,transit:1,return:2};
+            const sortedF=[...flights].sort((a,b)=>(ORDER[a.type]??9)-(ORDER[b.type]??9));
+            const usedIds=new Set();
+            const groups=[];
+            sortedF.forEach(f=>{
+              if(usedIds.has(f.id)) return;
+              if(f.type==="depart"){
+                const ret=flights.find(x=>x.type==="return"&&x.pairWith===f.id);
+                if(ret){ groups.push([f,ret]); usedIds.add(f.id); usedIds.add(ret.id); return; }
+              }
+              groups.push([f]); usedIds.add(f.id);
+            });
+            return groups.map((legs,gi)=>{
+              const isPair=legs.length>1;
+              return(
+                <div key={legs[0].id} style={{borderBottom:gi<groups.length-1?`1px solid ${BORDER}`:"none"}}>
+                  {isPair&&<div style={{padding:"8px 16px 0",display:"flex",alignItems:"center",gap:5}}>
+                    <Icon name="refresh" size={10} color={pal.bg} sw={2}/>
+                    <span style={{fontSize:10,fontWeight:700,color:pal.bg}}>來回行程</span>
+                  </div>}
+                  {legs.map((f,li)=>{
+                    const travelerNames=(f.travelers&&f.travelers.length&&f.travelers.length<companions.length)
+                      ? f.travelers.map(id=>companions.find(c=>c.id===id)?.name).filter(Boolean) : null;
+                    return(
+                      <SwipeDelete key={f.id} onDelete={()=>deleteFlight2(f.id)}>
+                        <div style={{padding:"11px 16px",borderBottom:li<legs.length-1?`1px dashed ${BORDER}`:"none"}}>
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+                            <div style={{display:"flex",alignItems:"center",gap:6}}>
+                              <span style={{fontSize:10,background:APP_BG,border:`1px solid ${BORDER}`,borderRadius:20,padding:"1px 7px",color:TEXT_M}}>{{depart:"去程",transit:"轉機",return:"回程"}[f.type]}</span>
+                              <span style={{fontFamily:"Georgia,serif",fontSize:14,fontWeight:700,color:TEXT_D}}>{f.code}</span>
+                            </div>
+                            <div style={{display:"flex",gap:5}}>
+                              <button onClick={e=>{e.stopPropagation();window.open(`https://www.flightaware.com/live/flight/${f.code}/${f.from||''}/${f.to||''}`,"_blank");}}
+                                style={{fontSize:9,color:pal.bg,background:APP_BG,border:`1px solid ${BORDER}`,borderRadius:8,padding:"2px 7px",cursor:"pointer",fontFamily:"inherit"}}>追蹤</button>
+                              <button onClick={e=>{e.stopPropagation();openEditFlight(f);}}
+                                style={{width:24,height:24,borderRadius:7,background:APP_BG,border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                                <Icon name="pencil-sm" size={11} color={TEXT_M} sw={1.8}/>
+                              </button>
+                            </div>
+                          </div>
+                          <div style={{display:"flex",alignItems:"center"}}>
+                            <div style={{flex:1}}>
+                              <div style={{fontFamily:"Georgia,serif",fontSize:16,fontWeight:700,color:TEXT_D}}>{f.from}</div>
+                              <div style={{fontSize:10,color:pal.bg,fontWeight:600}}>{f.depTime}</div>
+                              <div style={{fontSize:9,color:TEXT_L}}>{f.depDate}</div>
+                            </div>
+                            <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                              <div style={{height:1,flex:1,background:BORDER}}/><span style={{fontSize:14,color:pal.bg,margin:"0 4px"}}>✈</span><div style={{height:1,flex:1,background:BORDER}}/>
+                            </div>
+                            <div style={{flex:1,textAlign:"right"}}>
+                              <div style={{fontFamily:"Georgia,serif",fontSize:16,fontWeight:700,color:TEXT_D}}>{f.to}</div>
+                              <div style={{fontSize:10,color:pal.bg,fontWeight:600}}>{f.arrTime}</div>
+                              <div style={{fontSize:9,color:TEXT_L}}>{f.arrDate}</div>
+                            </div>
+                          </div>
+                          {(f.terminal||f.seat||travelerNames)&&<div style={{display:"flex",gap:5,marginTop:6,flexWrap:"wrap"}}>
+                            {f.terminal&&<span style={{fontSize:9,background:APP_BG,color:TEXT_M,padding:"2px 6px",borderRadius:8,border:`1px solid ${BORDER}`}}>航廈 {f.terminal}</span>}
+                            {f.seat&&<span style={{fontSize:9,background:APP_BG,color:TEXT_M,padding:"2px 6px",borderRadius:8,border:`1px solid ${BORDER}`}}>{f.seat}</span>}
+                            {travelerNames&&<span style={{fontSize:9,background:APP_BG,color:pal.bg,padding:"2px 6px",borderRadius:8,border:`1px solid ${BORDER}`}}>👤 {travelerNames.join("、")}</span>}
+                          </div>}
+                        </div>
+                      </SwipeDelete>
+                    );
+                  })}
                 </div>
-                <div style={{display:"flex",alignItems:"center"}}>
-                  <div style={{flex:1}}>
-                    <div style={{fontFamily:"Georgia,serif",fontSize:16,fontWeight:700,color:TEXT_D}}>{f.from}</div>
-                    <div style={{fontSize:10,color:pal.bg,fontWeight:600}}>{f.depTime}</div>
-                    <div style={{fontSize:9,color:TEXT_L}}>{f.depDate}</div>
-                  </div>
-                  <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center"}}>
-                    <div style={{height:1,flex:1,background:BORDER}}/><span style={{fontSize:14,color:pal.bg,margin:"0 4px"}}>✈</span><div style={{height:1,flex:1,background:BORDER}}/>
-                  </div>
-                  <div style={{flex:1,textAlign:"right"}}>
-                    <div style={{fontFamily:"Georgia,serif",fontSize:16,fontWeight:700,color:TEXT_D}}>{f.to}</div>
-                    <div style={{fontSize:10,color:pal.bg,fontWeight:600}}>{f.arrTime}</div>
-                    <div style={{fontSize:9,color:TEXT_L}}>{f.arrDate}</div>
-                  </div>
-                </div>
-                {(f.terminal||f.seat)&&<div style={{display:"flex",gap:5,marginTop:6}}>
-                  {f.terminal&&<span style={{fontSize:9,background:APP_BG,color:TEXT_M,padding:"2px 6px",borderRadius:8,border:`1px solid ${BORDER}`}}>航廈 {f.terminal}</span>}
-                  {f.seat&&<span style={{fontSize:9,background:APP_BG,color:TEXT_M,padding:"2px 6px",borderRadius:8,border:`1px solid ${BORDER}`}}>{f.seat}</span>}
-                </div>}
-              </div>
-            </SwipeDelete>
-          ))}
+              );
+            });
+          })()}
         </div>}
       </div>
 
@@ -2209,6 +2319,41 @@ function TripListTab({trip, onUpdate, pal, listData={}, onUpdateListData}){
                 style={{width:"100%",padding:"8px 10px",border:`1.5px solid ${BORDER}`,borderRadius:12,background:APP_BG,fontFamily:"inherit",fontSize:16,color:TEXT_D,outline:"none",boxSizing:"border-box"}}/>
             </div>
           </div>
+          {fType==="return"&&(
+            <div>
+              <label style={{fontSize:10,color:TEXT_L,display:"block",marginBottom:3,textTransform:"uppercase"}}>配對去程</label>
+              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                <button onClick={()=>setFPairWith2("")}
+                  style={{padding:"5px 10px",borderRadius:20,background:!fPairWith2?pal.bg:APP_BG,border:`1.5px solid ${!fPairWith2?pal.bg:BORDER}`,color:!fPairWith2?"#fff":TEXT_M,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
+                  不配對
+                </button>
+                {availableDeparts2.map(d=>(
+                  <button key={d.id} onClick={()=>setFPairWith2(d.id)}
+                    style={{padding:"5px 10px",borderRadius:20,background:fPairWith2===d.id?pal.bg:APP_BG,border:`1.5px solid ${fPairWith2===d.id?pal.bg:BORDER}`,color:fPairWith2===d.id?"#fff":TEXT_M,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
+                    {d.code} {d.depDate}
+                  </button>
+                ))}
+              </div>
+              {availableDeparts2.length===0&&<div style={{fontSize:11,color:TEXT_L,fontStyle:"italic",marginTop:4}}>尚無可配對的去程，請先新增去程航班</div>}
+            </div>
+          )}
+          {companions.length>0&&(
+            <div>
+              <label style={{fontSize:10,color:TEXT_L,display:"block",marginBottom:3,textTransform:"uppercase"}}>同行旅人</label>
+              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                {companions.map(c=>{
+                  const checked=fTravelers2.includes(c.id);
+                  return(
+                    <button key={c.id} onClick={()=>setFTravelers2(checked?fTravelers2.filter(id=>id!==c.id):[...fTravelers2,c.id])}
+                      style={{display:"flex",alignItems:"center",gap:4,padding:"5px 10px",borderRadius:20,background:checked?pal.bg:APP_BG,border:`1.5px solid ${checked?pal.bg:BORDER}`,color:checked?"#fff":TEXT_M,fontSize:11,cursor:"pointer",fontFamily:"inherit",transition:"all .15s"}}>
+                      {checked&&<svg width="9" height="9" viewBox="0 0 12 12" fill="none" stroke="#fff" strokeWidth="2"><path d="M2 6l3 3 5-5"/></svg>}
+                      {c.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           <div style={{display:"flex",gap:8,marginTop:4}}>
             <button onClick={()=>setShowFlightForm(false)} style={{flex:1,padding:"11px 0",borderRadius:16,border:`1.5px solid ${BORDER}`,color:TEXT_M,fontSize:14,background:"none",cursor:"pointer",fontFamily:"inherit"}}>取消</button>
             <button onClick={saveFlight2} style={{flex:1,padding:"11px 0",borderRadius:16,background:pal.bg,color:"#fff",fontSize:14,fontWeight:600,border:"none",cursor:"pointer",fontFamily:"inherit"}}>{editFlight?"儲存修改":"加入航班"}</button>
