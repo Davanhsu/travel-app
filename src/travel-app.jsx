@@ -368,6 +368,12 @@ function WheelColumnSm({items, value, onChange}){
   const drag = useRef({active:false, startY:0, startOffset:0});
   const containerRef = useRef();
   const offsetRef = useRef(offset);
+  // 保存最新的 value/onChange，避免 touch 監聽器（只在 [items,value] 改變時才重新綁定）
+  // 在兄弟欄位（時/分）其中一個值變了、但自己的 value 沒變時，仍抓到舊的 onChange closure
+  const onChangeRef = useRef(onChange);
+  const valueRef = useRef(value);
+  onChangeRef.current = onChange;
+  valueRef.current = value;
 
   useEffect(()=>{ offsetRef.current = offset; },[offset]);
 
@@ -384,7 +390,7 @@ function WheelColumnSm({items, value, onChange}){
     setOffset(snapped); offsetRef.current=snapped;
     const idx = ((-Math.round(snapped / ITEM_H_SM)) % LEN + LEN) % LEN;
     const v = items[idx];
-    if(v && v !== value) onChange(v);
+    if(v && v !== valueRef.current) onChangeRef.current(v);
   };
 
   // passive:false 才能 preventDefault
@@ -4047,7 +4053,7 @@ function InviteCodeButton({code}){
 function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect,onAdd,onDelete,onEditTrip,listData,onUpdateListData,user,initialExport,onExportClose}){
   const pal=PALETTE[trip.paletteIdx??0];
   const [dayIdx,setDayIdx]=useState(0),[showAdd,setShowAdd]=useState(false);
-  const [editIdx,setEditIdx]=useState(null),[form,setForm]=useState({title:"",time:"09:00",duration:"1 小時",location:"",locationUrl:"",content:"",images:[]});
+  const [editIdx,setEditIdx]=useState(null),[form,setForm]=useState({title:"",time:"09:00",duration:"1 小時",location:"",locationUrl:"",lat:null,lng:null,placeId:null,content:"",images:[]});
   const [activeTab,setActiveTab]=useState("calendar");
   const [delTarget,setDelTarget]=useState(null);
   const [showFlightPanel,setShowFlightPanel]=useState(false);
@@ -4108,13 +4114,13 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
   const schedule=trip.days[dayIdx]?.schedule||[];
   const sf=k=>v=>setForm(f=>({...f,[k]:v}));
   const updateSched=ns=>{const u=deepClone(trip);u.days[dayIdx].schedule=ns;onUpdate(u);};
-  const openAdd=()=>{const now=new Date();const ct=String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()<30?"00":"30");setEditIdx(null);setForm({title:"",time:ct,duration:"1 小時",location:"",locationUrl:"",content:"",images:[]});setShowAdd(true);};
-  const openEdit=i=>{setEditIdx(i);setForm({title:"",time:"09:00",duration:"1 小時",location:"",locationUrl:"",content:"",images:[],...schedule[i]});setShowAdd(true);};
+  const openAdd=()=>{const now=new Date();const ct=String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()<30?"00":"30");setEditIdx(null);setForm({title:"",time:ct,duration:"1 小時",location:"",locationUrl:"",lat:null,lng:null,placeId:null,content:"",images:[]});setShowAdd(true);};
+  const openEdit=i=>{setEditIdx(i);setForm({title:"",time:"09:00",duration:"1 小時",location:"",locationUrl:"",lat:null,lng:null,placeId:null,content:"",images:[],...schedule[i]});setShowAdd(true);};
   const saveEvent=()=>{
     if(!form.title.trim()) return;
     const next=[...schedule];
     if(editIdx!==null){next[editIdx]={...next[editIdx],...form};}
-    else{next.push({id:genId(),title:form.title,time:form.time,duration:form.duration,location:form.location||"未定地點",locationUrl:form.locationUrl||"",content:form.content||"",images:form.images||[]});}
+    else{next.push({id:genId(),title:form.title,time:form.time,duration:form.duration,location:form.location||"未定地點",locationUrl:form.locationUrl||"",lat:form.lat??null,lng:form.lng??null,placeId:form.placeId??null,content:form.content||"",images:form.images||[]});}
     updateSched(next);setShowAdd(false);
   };
   const delEvent=i=>{setDelTarget({idx:i,title:schedule[i]?.title||"此行程"});};
@@ -4175,10 +4181,6 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
       {trip.currency!=="KRW"&&<div style={{background:CARD_BG,borderRadius:"0 0 20px 20px",padding:"12px 16px 14px",boxShadow:"0 4px 12px rgba(0,0,0,.07)"}}>
         {validLocations.length>0 ? (
           <div style={{display:"flex",gap:8}}>
-            <button onClick={()=>{ const url=buildRouteUrl(); if(url) window.open(url,"_blank"); }}
-              style={{flex:1,padding:"9px 0",borderRadius:12,background:pal.bg,color:pal.fg,fontSize:11,fontWeight:600,border:"none",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
-              <Icon name="map" size={13} color={pal.fg} sw={1.8}/> 一鍵規劃路線
-            </button>
           </div>
         ) : (
           <div style={{display:"flex",alignItems:"center",gap:7,color:TEXT_L,fontSize:11,padding:"4px 0"}}>
