@@ -3668,7 +3668,7 @@ const TRANSIT_ART = {
   flight: c=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 00-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" fill={`${c}20`}/></svg>,
 };
 
-function TransitBar({from,fromUrl,to,toUrl,pal}){
+function TransitBar({from,fromUrl,to,toUrl,pal,mode,onChangeMode}){
   if(!from||!to||from==="未定地點"||to==="未定地點") return null;
 
   const isKorean = (str)=> /[\uAC00-\uD7AF\u1100-\u11FF]/.test(str||"");
@@ -3680,19 +3680,36 @@ function TransitBar({from,fromUrl,to,toUrl,pal}){
 
   const color = useNaver ? "#03C75A" : TRANSIT_COLORS["metro"];
 
+  // 交通方式：只有「步行」「大眾運輸」兩種，純粹保存使用者的選擇，不計算時間、不查任何 API
+  const modeBtn = (key,label)=>{
+    const sel = mode===key;
+    const c = TRANSIT_COLORS[key==="walk"?"walk":"metro"];
+    return(
+      <button onClick={()=>onChangeMode?.(sel?null:key)}
+        style={{display:"flex",alignItems:"center",gap:4,padding:"4px 8px",background:sel?`${c}18`:"none",border:`1px solid ${sel?c:BORDER}`,borderRadius:20,cursor:"pointer",fontFamily:"inherit"}}>
+        {TRANSIT_ART[key==="walk"?"walk":"metro"]?.(sel?c:TEXT_L)}
+        <span style={{fontSize:10,fontWeight:600,color:sel?c:TEXT_L}}>{label}</span>
+      </button>
+    );
+  };
+
   return(
-    <button onClick={()=>window.open(mapsUrl,"_blank")}
-      style={{display:"flex",alignItems:"center",gap:6,margin:"0 0 0 18px",padding:"4px 12px 4px 8px",background:"none",border:`1px solid ${color}40`,borderRadius:20,cursor:"pointer",fontFamily:"inherit"}}>
+    <div style={{display:"flex",alignItems:"center",gap:6,margin:"0 0 0 18px"}}>
       <div style={{width:1,height:16,background:BORDER,flexShrink:0}}/>
-      <span style={{display:"flex",alignItems:"center"}}>
-        {useNaver
-          ? <svg width="13" height="13" viewBox="0 0 24 24" fill={color}><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
-          : TRANSIT_ART["metro"]?.(color)
-        }
-      </span>
-      <span style={{fontSize:11,fontWeight:600,color,letterSpacing:"0.02em"}}>查看路線</span>
-      <Icon name="external-link" size={9} color={TEXT_L} sw={1.5}/>
-    </button>
+      {modeBtn("walk","步行")}
+      {modeBtn("transit","大眾運輸")}
+      <button onClick={()=>window.open(mapsUrl,"_blank")}
+        style={{display:"flex",alignItems:"center",gap:6,padding:"4px 12px 4px 8px",background:"none",border:`1px solid ${color}40`,borderRadius:20,cursor:"pointer",fontFamily:"inherit"}}>
+        <span style={{display:"flex",alignItems:"center"}}>
+          {useNaver
+            ? <svg width="13" height="13" viewBox="0 0 24 24" fill={color}><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+            : TRANSIT_ART["metro"]?.(color)
+          }
+        </span>
+        <span style={{fontSize:11,fontWeight:600,color,letterSpacing:"0.02em"}}>查看路線</span>
+        <Icon name="external-link" size={9} color={TEXT_L} sw={1.5}/>
+      </button>
+    </div>
   );
 }
 
@@ -4114,6 +4131,8 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
   const schedule=trip.days[dayIdx]?.schedule||[];
   const sf=k=>v=>setForm(f=>({...f,[k]:v}));
   const updateSched=ns=>{const u=deepClone(trip);u.days[dayIdx].schedule=ns;onUpdate(u);};
+  // 保存「這筆行程到下一筆行程」的交通方式選擇（walk | transit | null）— 存在該筆行程物件上
+  const setTransitMode=(i,m)=>{const next=[...schedule];next[i]={...next[i],transitMode:m};updateSched(next);};
   const openAdd=()=>{const now=new Date();const ct=String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()<30?"00":"30");setEditIdx(null);setForm({title:"",time:ct,duration:"1 小時",location:"",locationUrl:"",lat:null,lng:null,placeId:null,content:"",images:[]});setShowAdd(true);};
   const openEdit=i=>{setEditIdx(i);setForm({title:"",time:"09:00",duration:"1 小時",location:"",locationUrl:"",lat:null,lng:null,placeId:null,content:"",images:[],...schedule[i]});setShowAdd(true);};
   const saveEvent=()=>{
@@ -4266,6 +4285,7 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
                 <TransitBar
                   from={ev.location} fromUrl={ev.locationUrl}
                   to={schedule[i+1].location} toUrl={schedule[i+1].locationUrl}
+                  mode={ev.transitMode} onChangeMode={m=>setTransitMode(i,m)}
                   pal={pal}/>
               )}
             </div>
