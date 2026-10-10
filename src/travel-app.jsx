@@ -2766,6 +2766,9 @@ function WalletTab({trip,onUpdate}){
   const [fPayMethod,setFPayMethod]=useState("cash");
   const [fSplitMode,setFSplitMode]=useState("equal"); // equal | custom
   const [fCustomAmounts,setFCustomAmounts]=useState({}); // companionId → amount
+  const [fRate,setFRate]=useState(""); // 1 外幣 = ? 主要幣別（僅非主要幣別時使用）
+  const [rateBusy,setRateBusy]=useState(false);
+  const rateReq=useRef(0);
   const photoRef=useRef();
 
   // 旅伴管理
@@ -2773,13 +2776,33 @@ function WalletTab({trip,onUpdate}){
 
   const updateTrip=patch=>{const u={...trip,...patch};onUpdate(u);};
 
+  // 取得 1 外幣 = ? 主要幣別（open.er-api，失敗時用備援固定匯率；使用者可手動修改）
+  const loadRate=async(from)=>{
+    const base=trip.currency||"TWD";
+    if(!from||from===base){rateReq.current++;setFRate("");setRateBusy(false);return;}
+    const req=++rateReq.current;
+    setRateBusy(true);
+    let r=null;
+    try{const res=await fetch(`https://open.er-api.com/v6/latest/${from}`);const d=await res.json();r=d?.rates?.[base]||null;}catch(e){}
+    if(!r){const T={TWD:1,USD:0.031,JPY:5.03,KRW:42.5,EUR:0.029,GBP:0.025,THB:1.08,SGD:0.042};if(T[from]&&T[base])r=T[base]/T[from];}
+    if(req!==rateReq.current) return;
+    setFRate(r?String(Number(r.toPrecision(4))):"");
+    setRateBusy(false);
+  };
+  // 外幣支出換算成主要幣別的倍率（舊資料或同幣別 = 1）
+  const fxOf=e=>(e.currency&&e.currency!==trip.currency&&e.baseAmount!=null&&e.amount)?e.baseAmount/e.amount:1;
+  const baseAmt=e=>e.amount*fxOf(e);
+
   const today=new Date().toISOString().slice(0,10);
-  const openAdd=()=>{setEditingExp(null);setFAmount("");setFCat("food");setFNote("");setFSplitWith(companions.map(c=>c.id));setFPaidBy(companions[0]?.id||"");setFCurr(trip.currency||"TWD");setFPhoto(null);setFDate(today);setFPayMethod("cash");setFSplitMode("equal");setFCustomAmounts({});setShowForm(true);};
-  const openEdit=ex=>{setEditingExp(ex);setFAmount(String(ex.amount));setFCat(ex.cat);setFNote(ex.note||"");setFSplitWith(ex.splitWith||[]);setFPaidBy(ex.paidBy||companions[0]?.id||"");setFCurr(ex.currency||trip.currency||"TWD");setFPhoto(ex.photo||null);setFDate(ex.date||today);setFPayMethod(ex.payMethod||"cash");setFSplitMode(ex.splitMode||"equal");setFCustomAmounts(ex.customAmounts||{});setShowForm(true);};
+  const openAdd=()=>{rateReq.current++;setFRate("");setRateBusy(false);setEditingExp(null);setFAmount("");setFCat("food");setFNote("");setFSplitWith(companions.map(c=>c.id));setFPaidBy(companions[0]?.id||"");setFCurr(trip.currency||"TWD");setFPhoto(null);setFDate(today);setFPayMethod("cash");setFSplitMode("equal");setFCustomAmounts({});setShowForm(true);};
+  const openEdit=ex=>{rateReq.current++;setFRate(ex.rate?String(ex.rate):"");setRateBusy(false);if(ex.currency&&ex.currency!==trip.currency&&!ex.rate)loadRate(ex.currency);setEditingExp(ex);setFAmount(String(ex.amount));setFCat(ex.cat);setFNote(ex.note||"");setFSplitWith(ex.splitWith||[]);setFPaidBy(ex.paidBy||companions[0]?.id||"");setFCurr(ex.currency||trip.currency||"TWD");setFPhoto(ex.photo||null);setFDate(ex.date||today);setFPayMethod(ex.payMethod||"cash");setFSplitMode(ex.splitMode||"equal");setFCustomAmounts(ex.customAmounts||{});setShowForm(true);};
 
   const saveExp=()=>{
     if(!fAmount||isNaN(Number(fAmount))) return;
-    const ex={id:editingExp?.id||genId(),amount:Number(fAmount),cat:fCat,note:fNote,currency:fCurr,splitWith:fSplitWith,paidBy:fPaidBy,payMethod:fPayMethod,splitMode:fSplitMode,customAmounts:fCustomAmounts,photo:fPhoto,date:fDate||today};
+    const isFx=fCurr!==(trip.currency||"TWD");
+    const rate=Number(fRate);
+    if(isFx&&!(rate>0)) return; // 外幣需要有效匯率
+    const ex={id:editingExp?.id||genId(),amount:Number(fAmount),rate:isFx?rate:null,baseAmount:isFx?Math.round(Number(fAmount)*rate*100)/100:null,cat:fCat,note:fNote,currency:fCurr,splitWith:fSplitWith,paidBy:fPaidBy,payMethod:fPayMethod,splitMode:fSplitMode,customAmounts:fCustomAmounts,photo:fPhoto,date:fDate||today};
     let next;
     if(editingExp) next=expenses.map(e=>e.id===editingExp.id?ex:e);
     else next=[...expenses,ex];
@@ -2791,10 +2814,7 @@ function WalletTab({trip,onUpdate}){
   const delCompanion=id=>updateTrip({companions:companions.filter(c=>c.id!==id)});
   const renameCompanion=(id,name)=>updateTrip({companions:companions.map(c=>c.id===id?{...c,name}:c)});
 
-  const total=expenses.reduce((s,e)=>{
-    if(e.currency===trip.currency) return s+e.amount;
-    return s+e.amount;
-  },0);
+  const total=expenses.reduce((s,e)=>s+baseAmt(e),0);
 
   const catLabel=id=>EXPENSE_CATS.find(c=>c.id===id)||{id:"other",label:"其他"};
 
@@ -2817,7 +2837,7 @@ function WalletTab({trip,onUpdate}){
         // 自訂：每人應付各自的金額，付款人收回
         ex.splitWith.forEach(cid=>{
           if(!balance.hasOwnProperty(cid)||cid===paidBy) return;
-          const amt=ex.customAmounts[cid]||0;
+          const amt=(ex.customAmounts[cid]||0)*fxOf(ex);
           balance[paidBy]+=amt;   // 付款人收回
           balance[cid]-=amt;      // 分攤人欠款
         });
@@ -2826,7 +2846,7 @@ function WalletTab({trip,onUpdate}){
         // 非付款人各欠付款人一份
         const allParticipants=ex.splitWith.filter(id=>balance.hasOwnProperty(id));
         if(!allParticipants.length) return;
-        const perPerson=ex.amount/allParticipants.length;
+        const perPerson=baseAmt(ex)/allParticipants.length;
         const nonPayers=allParticipants.filter(id=>id!==paidBy);
         nonPayers.forEach(cid=>{
           balance[paidBy]+=perPerson;  // 付款人收回
@@ -2857,7 +2877,7 @@ function WalletTab({trip,onUpdate}){
     expenses.forEach(ex=>{
       // 沒有分攤人員：若付款人是此旅伴，全額算入
       if(!ex.splitWith?.length){
-        if(ex.paidBy===c.id) actual+=ex.amount;
+        if(ex.paidBy===c.id) actual+=baseAmt(ex);
         return;
       }
       const participants = ex.splitWith.filter(id=>companions.find(comp=>comp.id===id));
@@ -2865,14 +2885,14 @@ function WalletTab({trip,onUpdate}){
       if(ex.splitMode==="custom"&&ex.customAmounts){
         if(ex.paidBy===c.id){
           const othersTotal=Object.entries(ex.customAmounts).filter(([id])=>id!==c.id).reduce((s,[,v])=>s+v,0);
-          actual+=ex.amount-othersTotal;
+          actual+=baseAmt(ex)-othersTotal*fxOf(ex);
         } else {
-          actual+=ex.customAmounts[c.id]||0;
+          actual+=(ex.customAmounts[c.id]||0)*fxOf(ex);
         }
       } else {
         const allParticipants=ex.splitWith.filter(id=>companions.find(comp=>comp.id===id));
         if(!allParticipants.includes(c.id)) return;
-        actual+=ex.amount/allParticipants.length;
+        actual+=baseAmt(ex)/allParticipants.length;
       }
     });
     return {...c, actual:Math.round(actual)};
@@ -2948,7 +2968,7 @@ function WalletTab({trip,onUpdate}){
       {/* 依日期折疊分組 */}
       {byDate.map(([date, exList])=>{
         const collapsed = collapsedDates[date];
-        const dayTotal = exList.reduce((s,e)=>s+e.amount,0);
+        const dayTotal = Math.round(exList.reduce((s,e)=>s+baseAmt(e),0));
         return(
           <div key={date} style={{marginBottom:12}}>
             {/* 日期標頭（可折疊）*/}
@@ -3017,6 +3037,7 @@ function WalletTab({trip,onUpdate}){
                       )}
                       <div style={{textAlign:"right"}}>
                         <div style={{fontFamily:"Georgia,serif",fontSize:16,fontWeight:700,color:TEXT_D}}>{sym}{ex.amount.toLocaleString()}</div>
+                        {fxOf(ex)!==1&&<div style={{fontSize:11,color:TEXT_L}}>≈ {currency.symbol}{Math.round(baseAmt(ex)).toLocaleString()}</div>}
                         {hasSplit&&nonPayers.length>0&&<div style={{fontSize:11,color:TEXT_L}}>各 {sym}{eachAmt}</div>}
                       </div>
                     </div>
@@ -3050,13 +3071,22 @@ function WalletTab({trip,onUpdate}){
           <div>
             <label style={{fontSize:10,color:TEXT_L,display:"block",marginBottom:4,letterSpacing:"0.07em",textTransform:"uppercase"}}>金額</label>
             <div style={{display:"flex",gap:8}}>
-              <select value={fCurr} onChange={e=>setFCurr(e.target.value)}
+              <select value={fCurr} onChange={e=>{setFCurr(e.target.value);loadRate(e.target.value);}}
                 style={{padding:"9px 10px",border:`1.5px solid ${BORDER}`,borderRadius:12,background:APP_BG,fontFamily:"inherit",fontSize:13,color:TEXT_D,outline:"none",cursor:"pointer"}}>
                 {CURRENCIES.map(c=><option key={c.code} value={c.code}>{c.symbol} {c.code}</option>)}
               </select>
               <input type="number" value={fAmount} onChange={e=>setFAmount(e.target.value)} placeholder="0"
                 style={{flex:1,padding:"9px 12px",border:`1.5px solid ${BORDER}`,borderRadius:12,background:APP_BG,fontFamily:"Georgia,serif",fontSize:18,color:TEXT_D,outline:"none"}}/>
             </div>
+            {fCurr!==(trip.currency||"TWD")&&(
+              <div style={{marginTop:8,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",fontSize:12,color:TEXT_M}}>
+                <span>匯率 1 {fCurr} =</span>
+                <input type="number" inputMode="decimal" value={fRate} onChange={e=>setFRate(e.target.value)} placeholder={rateBusy?"取得中…":"0"}
+                  style={{width:90,padding:"6px 8px",border:`1.5px solid ${Number(fRate)>0?BORDER:"#B04A38"}`,borderRadius:10,background:APP_BG,fontFamily:"Georgia,serif",fontSize:14,color:TEXT_D,outline:"none"}}/>
+                <span>{trip.currency||"TWD"}</span>
+                {Number(fRate)>0&&Number(fAmount)>0&&<span style={{color:TEXT_L}}>≈ {currency.symbol}{Math.round(Number(fAmount)*Number(fRate)).toLocaleString()}</span>}
+              </div>
+            )}
           </div>
           {/* 類別（4×2 緊湊格）*/}
           <div>
