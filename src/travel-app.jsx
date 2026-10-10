@@ -4067,6 +4067,124 @@ function InviteCodeButton({code}){
   );
 }
 
+// ─── Google Places API (New)：行程「地點名稱」自動完成 ───
+// 使用前需在 Google Cloud 啟用「Places API (New)」，並把 API key 填在下面（建議限制 key 只能呼叫 Places API (New)，並設定網域限制）。
+// 留空時：地點名稱維持原本的純文字輸入，不會送出任何請求。
+const GOOGLE_PLACES_API_KEY = "";
+const PLACES_BASE = "https://places.googleapis.com/v1";
+const newPlacesSessionToken = () =>
+  (typeof crypto!=="undefined" && crypto.randomUUID)
+    ? crypto.randomUUID()
+    : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==="x"?r:(r&3|8)).toString(16);});
+
+async function placesAutocomplete(input, sessionToken, signal){
+  const res = await fetch(`${PLACES_BASE}/places:autocomplete`,{
+    method:"POST", signal,
+    headers:{"Content-Type":"application/json","X-Goog-Api-Key":GOOGLE_PLACES_API_KEY},
+    body:JSON.stringify({input, sessionToken, languageCode:"zh-TW"}),
+  });
+  if(!res.ok) throw new Error("places autocomplete "+res.status);
+  const data = await res.json();
+  return (data.suggestions||[]).filter(s=>s.placePrediction&&s.placePrediction.placeId).map(s=>{
+    const p = s.placePrediction;
+    return {
+      placeId: p.placeId,
+      name: p.structuredFormat?.mainText?.text || p.text?.text || "",
+      sub:  p.structuredFormat?.secondaryText?.text || "",
+    };
+  });
+}
+
+// 只取座標（FieldMask 只要 id,location，避免多付不需要的欄位費用）；帶同一個 sessionToken 結束本次搜尋 session
+async function placesDetails(placeId, sessionToken){
+  const qs = `languageCode=zh-TW`+(sessionToken?`&sessionToken=${encodeURIComponent(sessionToken)}`:"");
+  const res = await fetch(`${PLACES_BASE}/places/${encodeURIComponent(placeId)}?${qs}`,{
+    headers:{"X-Goog-Api-Key":GOOGLE_PLACES_API_KEY,"X-Goog-FieldMask":"id,location"},
+  });
+  if(!res.ok) throw new Error("places details "+res.status);
+  const d = await res.json();
+  if(typeof d.location?.latitude!=="number"||typeof d.location?.longitude!=="number") throw new Error("places details: no location");
+  return {lat:d.location.latitude, lng:d.location.longitude, placeId:d.id||placeId};
+}
+
+// 「地點名稱」輸入框：打字時搜尋建議；選擇後一次回報 location/lat/lng/placeId。
+// 手動改字就清掉座標（文字與選到的地點不一致時，不保留舊座標）。
+function PlaceInput({value, placeId, onChange, pal, inputStyle}){
+  const [sugs,setSugs]=useState([]);
+  const [open,setOpen]=useState(false);
+  const tokenRef=useRef(null);   // autocomplete session token（選定地點呼叫 Details 後結束，下次重新產生）
+  const timerRef=useRef(null);
+  const abortRef=useRef(null);
+  const pickSeq=useRef(0);       // 避免選取途中又打字時，舊的 Details 結果覆蓋使用者輸入
+  const enabled=!!GOOGLE_PLACES_API_KEY;
+
+  useEffect(()=>()=>{clearTimeout(timerRef.current);abortRef.current?.abort();pickSeq.current++;},[]);
+
+  const handleChange=e=>{
+    const v=e.target.value;
+    pickSeq.current++;
+    onChange({location:v,lat:null,lng:null,placeId:null});
+    if(!enabled) return;
+    clearTimeout(timerRef.current);
+    abortRef.current?.abort();
+    if(v.trim().length<2){setSugs([]);setOpen(false);return;}
+    timerRef.current=setTimeout(async()=>{
+      const ctrl=new AbortController();
+      abortRef.current=ctrl;
+      if(!tokenRef.current) tokenRef.current=newPlacesSessionToken();
+      try{
+        const list=await placesAutocomplete(v.trim(),tokenRef.current,ctrl.signal);
+        if(ctrl.signal.aborted) return;
+        setSugs(list);setOpen(list.length>0);
+      }catch(err){
+        if(!ctrl.signal.aborted){setSugs([]);setOpen(false);}
+      }
+    },300);
+  };
+
+  const pick=async s=>{
+    clearTimeout(timerRef.current);
+    abortRef.current?.abort();
+    setOpen(false);setSugs([]);
+    const my=++pickSeq.current;
+    const token=tokenRef.current;
+    tokenRef.current=null;   // Details 呼叫會結束這個 session
+    onChange({location:s.name,lat:null,lng:null,placeId:null});   // 先顯示名稱
+    try{
+      const d=await placesDetails(s.placeId,token);
+      if(my!==pickSeq.current) return;
+      onChange({location:s.name,lat:d.lat,lng:d.lng,placeId:d.placeId});
+    }catch(err){ /* 取座標失敗：保留名稱，不寫入座標 */ }
+  };
+
+  return(
+    <div style={{position:"relative"}}>
+      <input value={value} onChange={handleChange} placeholder="首爾鐘路區" autoComplete="off"
+        onFocus={()=>{if(sugs.length) setOpen(true);}}
+        onBlur={()=>setTimeout(()=>setOpen(false),150)}
+        style={{...inputStyle,paddingRight:value?"38px":"14px",borderColor:placeId?pal.bg:BORDER}}/>
+      {value&&(
+        <button onClick={()=>window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(value)}`,"_blank")}
+          style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",width:25,height:25,borderRadius:8,background:pal.bg,border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <Icon name="external-link" size={11} color="#fff"/>
+        </button>
+      )}
+      {open&&sugs.length>0&&(
+        <div style={{position:"absolute",left:0,top:"calc(100% + 4px)",width:"calc(200% + 12px)",zIndex:20,background:CARD_BG,border:`1px solid ${BORDER}`,borderRadius:14,boxShadow:"0 6px 18px rgba(0,0,0,.12)",overflow:"hidden"}}>
+          {sugs.map(s=>(
+            <div key={s.placeId} onMouseDown={e=>e.preventDefault()} onClick={()=>pick(s)}
+              style={{padding:"9px 14px",cursor:"pointer",borderBottom:`1px solid ${BORDER}`}}>
+              <div style={{fontSize:14,color:TEXT_D,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.name}</div>
+              {s.sub&&<div style={{fontSize:11,color:TEXT_L,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.sub}</div>}
+            </div>
+          ))}
+          <div style={{padding:"4px 14px",fontSize:9,color:TEXT_L,textAlign:"right"}}>Powered by Google</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect,onAdd,onDelete,onEditTrip,listData,onUpdateListData,user,initialExport,onExportClose}){
   const pal=PALETTE[trip.paletteIdx??0];
   const [dayIdx,setDayIdx]=useState(0),[showAdd,setShowAdd]=useState(false);
@@ -4368,16 +4486,8 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
           <div style={{display:"flex",gap:12}}>
             <div style={{flex:1,minWidth:0}}>
               <label style={lbl}>地點名稱</label>
-              <div style={{position:"relative"}}>
-                <input value={form.location} onChange={e=>sf("location")(e.target.value)} placeholder="首爾鐘路區"
-                  style={{...inp,paddingRight:form.location?"38px":"14px"}}/>
-                {form.location&&(
-                  <button onClick={()=>window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(form.location)}`,"_blank")}
-                    style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",width:25,height:25,borderRadius:8,background:pal.bg,border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                    <Icon name="external-link" size={11} color="#fff"/>
-                  </button>
-                )}
-              </div>
+              <PlaceInput value={form.location} placeId={form.placeId}
+                onChange={p=>setForm(f=>({...f,...p}))} pal={pal} inputStyle={inp}/>
             </div>
             <div style={{flex:1,minWidth:0}}>
               <label style={lbl}>地圖連結（選填）</label>
