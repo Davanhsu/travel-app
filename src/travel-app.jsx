@@ -4145,43 +4145,35 @@ function InviteCodeButton({code}){
 }
 
 // ─── Google Places API (New)：行程「地點名稱」自動完成 ───
-// 使用前需在 Google Cloud 啟用「Places API (New)」，並把 API key 填在下面（建議限制 key 只能呼叫 Places API (New)，並設定網域限制）。
-// 留空時：地點名稱維持原本的純文字輸入，不會送出任何請求。
-const GOOGLE_PLACES_API_KEY = "";
-const PLACES_BASE = "https://places.googleapis.com/v1";
+// 前端不再持有任何 Google 金鑰：所有請求都送到同網站的 Vercel Function /api/places，金鑰存在伺服器環境變數 GOOGLE_PLACES_API_KEY。
+// 伺服器未設定或失敗時：地點名稱維持原本的純文字輸入（只是沒有建議清單）。
 const newPlacesSessionToken = () =>
   (typeof crypto!=="undefined" && crypto.randomUUID)
     ? crypto.randomUUID()
     : "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g,c=>{const r=Math.random()*16|0;return (c==="x"?r:(r&3|8)).toString(16);});
 
 async function placesAutocomplete(input, sessionToken, signal){
-  const res = await fetch(`${PLACES_BASE}/places:autocomplete`,{
+  const res = await fetch("/api/places",{
     method:"POST", signal,
-    headers:{"Content-Type":"application/json","X-Goog-Api-Key":GOOGLE_PLACES_API_KEY},
-    body:JSON.stringify({input, sessionToken, languageCode:"zh-TW"}),
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({action:"autocomplete", input, sessionToken}),
   });
   if(!res.ok) throw new Error("places autocomplete "+res.status);
   const data = await res.json();
-  return (data.suggestions||[]).filter(s=>s.placePrediction&&s.placePrediction.placeId).map(s=>{
-    const p = s.placePrediction;
-    return {
-      placeId: p.placeId,
-      name: p.structuredFormat?.mainText?.text || p.text?.text || "",
-      sub:  p.structuredFormat?.secondaryText?.text || "",
-    };
-  });
+  return Array.isArray(data.suggestions) ? data.suggestions : [];   // [{placeId,name,sub}]
 }
 
-// 只取座標（FieldMask 只要 id,location，避免多付不需要的欄位費用）；帶同一個 sessionToken 結束本次搜尋 session
+// 只取座標；帶同一個 sessionToken 結束本次搜尋 session
 async function placesDetails(placeId, sessionToken){
-  const qs = `languageCode=zh-TW`+(sessionToken?`&sessionToken=${encodeURIComponent(sessionToken)}`:"");
-  const res = await fetch(`${PLACES_BASE}/places/${encodeURIComponent(placeId)}?${qs}`,{
-    headers:{"X-Goog-Api-Key":GOOGLE_PLACES_API_KEY,"X-Goog-FieldMask":"id,location"},
+  const res = await fetch("/api/places",{
+    method:"POST",
+    headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({action:"details", placeId, sessionToken}),
   });
   if(!res.ok) throw new Error("places details "+res.status);
   const d = await res.json();
-  if(typeof d.location?.latitude!=="number"||typeof d.location?.longitude!=="number") throw new Error("places details: no location");
-  return {lat:d.location.latitude, lng:d.location.longitude, placeId:d.id||placeId};
+  if(typeof d.lat!=="number"||typeof d.lng!=="number") throw new Error("places details: no location");
+  return {lat:d.lat, lng:d.lng, placeId:d.placeId||placeId};
 }
 
 // 「地點名稱」輸入框：打字時搜尋建議；選擇後一次回報 location/lat/lng/placeId。
@@ -4193,7 +4185,7 @@ function PlaceInput({value, placeId, onChange, pal, inputStyle}){
   const timerRef=useRef(null);
   const abortRef=useRef(null);
   const pickSeq=useRef(0);       // 避免選取途中又打字時，舊的 Details 結果覆蓋使用者輸入
-  const enabled=!!GOOGLE_PLACES_API_KEY;
+  const enabled=true;   // 金鑰在伺服器端；/api/places 不可用時只是沒有建議清單
 
   useEffect(()=>()=>{clearTimeout(timerRef.current);abortRef.current?.abort();pickSeq.current++;},[]);
 
