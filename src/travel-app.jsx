@@ -3698,7 +3698,53 @@ const TRANSIT_ART = {
   flight: c=><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 00-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5l8 2.5z" fill={`${c}20`}/></svg>,
 };
 
-function TransitBar({from,fromUrl,to,toUrl,pal,mode,onChangeMode}){
+// <route-helpers>
+// 行程間通行時間：有座標時呼叫 /api/route（Vercel Function，金鑰在伺服器端），失敗或沒有座標時退回直線距離估算
+const ROUTE_TZ={JPY:"+09:00",KRW:"+09:00",TWD:"+08:00",SGD:"+08:00",THB:"+07:00"};
+function routeDepartISO(fullDate,time,duration,currency){
+  const tz=ROUTE_TZ[currency];
+  if(!tz||!fullDate||!/^\d{1,2}:\d{2}$/.test(time||"")) return null;
+  const hm=time.length===4?"0"+time:time;
+  let mins=0;
+  const h=/(\d+(?:\.\d+)?)\s*小時/.exec(duration||""), m=/(\d+)\s*分/.exec(duration||"");
+  if(h) mins+=parseFloat(h[1])*60;
+  if(m) mins+=parseInt(m[1],10);
+  const t=Date.parse(`${fullDate}T${hm}:00${tz}`);
+  if(isNaN(t)) return null;
+  return new Date(t+mins*60000).toISOString();
+}
+function routeEstimateMin(a,b,mode){
+  const R=6371, rad=x=>x*Math.PI/180;
+  const dLat=rad(b.lat-a.lat), dLng=rad(b.lng-a.lng);
+  const h=Math.sin(dLat/2)**2+Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dLng/2)**2;
+  const km=2*R*Math.asin(Math.sqrt(h))*1.3; // 直線距離 × 1.3 當作實際路程
+  return mode==="walk" ? Math.max(1,Math.round(km/4.5*60)) : Math.max(3,Math.round(km/25*60+8));
+}
+function routeFmt(min){ return min>=60 ? `${Math.floor(min/60)} 小時${min%60?` ${min%60} 分`:""}` : `${min} 分`; }
+const ROUTE_CACHE={};
+// </route-helpers>
+function TransitTime({a,b,mode,depart}){
+  const m=mode==="walk"?"walk":"transit";
+  const key=a&&b?`${a.lat.toFixed(5)},${a.lng.toFixed(5)}>${b.lat.toFixed(5)},${b.lng.toFixed(5)}|${m}|${m==="transit"&&depart?depart.slice(0,13):""}`:null;
+  const [res,setRes]=useState(null);
+  useEffect(()=>{
+    if(!key){setRes(null);return;}
+    if(ROUTE_CACHE[key]){setRes(ROUTE_CACHE[key]);return;}
+    const est={min:routeEstimateMin(a,b,m),est:true};
+    setRes(est);
+    const ctrl=new AbortController();
+    fetch("/api/route",{method:"POST",headers:{"Content-Type":"application/json"},signal:ctrl.signal,
+      body:JSON.stringify({from:a,to:b,mode:m,departureTime:m==="transit"?depart:null})})
+      .then(r=>r.ok?r.json():null)
+      .then(d=>{const v=d&&typeof d.min==="number"?{min:d.min,est:false}:est;ROUTE_CACHE[key]=v;setRes(v);})
+      .catch(e=>{if(e.name!=="AbortError")ROUTE_CACHE[key]=est;});
+    return()=>ctrl.abort();
+  },[key]);
+  if(!res) return null;
+  return <span style={{fontSize:11,fontWeight:600,color:TEXT_M,whiteSpace:"nowrap"}}>約 {routeFmt(res.min)}{res.est&&<span style={{fontWeight:400,color:TEXT_L}}>（估）</span>}</span>;
+}
+
+function TransitBar({from,fromUrl,to,toUrl,pal,mode,onChangeMode,fromPt,toPt,depart}){
   if(!from||!to||from==="未定地點"||to==="未定地點") return null;
 
   const isKorean = (str)=> /[\uAC00-\uD7AF\u1100-\u11FF]/.test(str||"");
@@ -3710,7 +3756,7 @@ function TransitBar({from,fromUrl,to,toUrl,pal,mode,onChangeMode}){
 
   const color = useNaver ? "#03C75A" : TRANSIT_COLORS["metro"];
 
-  // 交通方式：只有「步行」「大眾運輸」兩種，純粹保存使用者的選擇，不計算時間、不查任何 API
+  // 交通方式：只有「步行」「大眾運輸」兩種，保存使用者的選擇；通行時間由 <TransitTime/> 顯示
   const modeBtn = (key,label)=>{
     const sel = mode===key;
     const c = TRANSIT_COLORS[key==="walk"?"walk":"metro"];
@@ -3724,7 +3770,7 @@ function TransitBar({from,fromUrl,to,toUrl,pal,mode,onChangeMode}){
   };
 
   return(
-    <div style={{display:"flex",alignItems:"center",gap:6,margin:"0 0 0 18px"}}>
+    <div style={{display:"flex",alignItems:"center",gap:6,rowGap:4,flexWrap:"wrap",margin:"0 0 0 18px"}}>
       <div style={{width:1,height:16,background:BORDER,flexShrink:0}}/>
       {modeBtn("walk","步行")}
       {modeBtn("transit","大眾運輸")}
@@ -3739,6 +3785,7 @@ function TransitBar({from,fromUrl,to,toUrl,pal,mode,onChangeMode}){
         <span style={{fontSize:11,fontWeight:600,color,letterSpacing:"0.02em"}}>查看路線</span>
         <Icon name="external-link" size={9} color={TEXT_L} sw={1.5}/>
       </button>
+      <TransitTime a={fromPt} b={toPt} mode={mode} depart={depart}/>
     </div>
   );
 }
@@ -4434,6 +4481,9 @@ function TripDetailPage({trip,onBack,onUpdate,trips,prefs,onUpdatePrefs,onSelect
                   from={ev.location} fromUrl={ev.locationUrl}
                   to={schedule[i+1].location} toUrl={schedule[i+1].locationUrl}
                   mode={ev.transitMode} onChangeMode={m=>setTransitMode(i,m)}
+                  fromPt={ev.lat!=null&&ev.lng!=null?{lat:ev.lat,lng:ev.lng}:null}
+                  toPt={schedule[i+1].lat!=null&&schedule[i+1].lng!=null?{lat:schedule[i+1].lat,lng:schedule[i+1].lng}:null}
+                  depart={routeDepartISO(trip.days[dayIdx]?.fullDate,ev.time,ev.duration,trip.currency)}
                   pal={pal}/>
               )}
             </div>
