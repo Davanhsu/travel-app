@@ -32,14 +32,22 @@ async function callRoutes(key, from, to, travelMode, departureTime) {
     headers: {
       "Content-Type": "application/json",
       "X-Goog-Api-Key": key,
-      "X-Goog-FieldMask": "routes.duration",
+      "X-Goog-FieldMask": "routes.duration,routes.staticDuration,routes.legs.duration,routes.legs.staticDuration",
     },
     body: JSON.stringify(body),
   });
   if (!r.ok) return { ok: false, status: r.status };
   const d = await r.json();
-  const sec = parseInt(String(d?.routes?.[0]?.duration || "").replace("s", ""), 10);
-  return { ok: true, min: Number.isFinite(sec) ? Math.max(1, Math.round(sec / 60)) : null };
+  const rt = d && d.routes && d.routes[0];
+  const secOf = (v) => { const n = parseInt(String(v || "").replace("s", ""), 10); return Number.isFinite(n) ? n : null; };
+  // 大眾運輸的路線層級 duration 有時不會回傳，改用 staticDuration 或各段 legs 加總
+  let sec = rt ? (secOf(rt.duration) ?? secOf(rt.staticDuration)) : null;
+  if (sec == null && rt && Array.isArray(rt.legs)) {
+    let sum = 0, okAll = rt.legs.length > 0;
+    for (const l of rt.legs) { const v = secOf(l.duration) ?? secOf(l.staticDuration); if (v == null) okAll = false; else sum += v; }
+    if (okAll) sec = sum;
+  }
+  return { ok: true, min: sec != null ? Math.max(1, Math.round(sec / 60)) : null, reason: rt ? "no_duration" : "no_route" };
 }
 
 module.exports = async (req, res) => {
@@ -84,6 +92,7 @@ module.exports = async (req, res) => {
       console.error("routes api status", out.status);
       return res.status(502).json({ min: null });
     }
+    if (out.min == null) console.error("routes api empty", travelMode, out.reason);
     return res.status(200).json({ min: out.min });
   } catch (e) {
     console.error("routes api error", e && e.name);
