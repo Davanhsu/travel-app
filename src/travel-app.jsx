@@ -3741,7 +3741,7 @@ function TransitTime({a,b,mode,depart}){
     return()=>ctrl.abort();
   },[key]);
   if(!res) return null;
-  return <span style={{fontSize:11,fontWeight:600,color:TEXT_M,whiteSpace:"nowrap"}}>約 {routeFmt(res.min)}{res.est&&<span style={{fontWeight:400,color:TEXT_L}}>（估）</span>}</span>;
+  return <span style={{fontSize:11,fontWeight:600,color:TEXT_M,whiteSpace:"nowrap"}}>約 {routeFmt(res.min)}{res.est&&<span style={{fontWeight:400,color:TEXT_L}}>（直線估算）</span>}</span>;
 }
 
 function TransitBar({from,fromUrl,to,toUrl,pal,mode,onChangeMode,fromPt,toPt,depart}){
