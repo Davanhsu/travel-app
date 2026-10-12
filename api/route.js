@@ -38,6 +38,7 @@ async function callRoutes(key, from, to, travelMode, departureTime) {
   });
   if (!r.ok) return { ok: false, status: r.status };
   const d = await r.json();
+  if (!(d && d.routes && d.routes[0])) console.error("routes api body", travelMode, JSON.stringify(d).slice(0, 300));
   const rt = d && d.routes && d.routes[0];
   const secOf = (v) => { const n = parseInt(String(v || "").replace("s", ""), 10); return Number.isFinite(n) ? n : null; };
   // 大眾運輸的路線層級 duration 有時不會回傳，改用 staticDuration 或各段 legs 加總
